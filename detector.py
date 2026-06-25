@@ -199,14 +199,49 @@ def detect_traffic_spike(events):
 
 
 def calculate_threat_score(anomalies):
-    """Calculate a threat score from 0-100 based on anomaly count and severity."""
+    """Calculate a nuanced threat score from 0-100 based on type, severity, and intensity."""
+    # Base points per anomaly type and severity
+    base_points = {
+        ("BRUTE_FORCE", "HIGH"): 20,
+        ("BRUTE_FORCE", "MEDIUM"): 10,
+        ("PORT_SCAN", "HIGH"): 15,
+        ("PORT_SCAN", "MEDIUM"): 8,
+        ("TRAFFIC_SPIKE", "HIGH"): 12,
+        ("TRAFFIC_SPIKE", "MEDIUM"): 6,
+    }
+
     score = 0
+    unique_ips = set()
+
     for a in anomalies:
-        if a["severity"] == "HIGH":
-            score += 25
-        elif a["severity"] == "MEDIUM":
-            score += 10
-    return min(score, 100)
+        key = (a["type"], a["severity"])
+        score += base_points.get(key, 0)
+
+        # Bonus points based on intensity
+        if a["type"] == "BRUTE_FORCE":
+            count = a.get("count", 0)
+            if count > 30:
+                score += (count - 30) // 10
+
+        elif a["type"] == "PORT_SCAN":
+            ports = a.get("unique_ports", 0)
+            if ports > 20:
+                score += (ports - 20) // 5
+
+        elif a["type"] == "TRAFFIC_SPIKE":
+            multiplier = a.get("multiplier", 0)
+            if multiplier > 8:
+                score += 2
+
+        # Track unique IPs
+        if "src_ip" in a:
+            unique_ips.add(a["src_ip"])
+
+    # Coordinated attack penalty
+    if len(unique_ips) > 2:
+        score += 10
+
+    return min(round(score), 100)
 
 
 def get_flagged_ips(anomalies):
