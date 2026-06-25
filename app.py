@@ -25,22 +25,19 @@ SAMPLE_FILES = {
 
 @app.route("/")
 def index():
-    """Render the main page with no analysis data."""
-    return render_template("index.html", results=None, metadata=None, error=None)
+    """Render the main page."""
+    return render_template("index.html")
 
 
 @app.route("/load-sample/<scenario>")
 def load_sample(scenario):
-    """Load and analyze a sample log file by scenario name."""
+    """Load and analyze a sample log file, return JSON."""
     global last_results
 
     if scenario not in SAMPLE_FILES:
-        return render_template(
-            "index.html",
-            results=None,
-            metadata=None,
-            error=f"Unknown scenario: '{scenario}'. Valid options: {', '.join(SAMPLE_FILES.keys())}",
-        )
+        return jsonify({
+            "error": f"Unknown scenario: '{scenario}'. Valid options: {', '.join(SAMPLE_FILES.keys())}"
+        }), 400
 
     filepath = SAMPLE_FILES[scenario]
 
@@ -58,44 +55,25 @@ def load_sample(scenario):
 
     last_results = results
 
-    return render_template("index.html", results=results, metadata=metadata, error=None)
+    return jsonify({"results": results, "metadata": metadata})
 
 
 @app.route("/upload", methods=["POST"])
 def upload():
-    """Handle uploaded log file and analyze it."""
+    """Handle uploaded log file and analyze it, return JSON."""
     global last_results
 
-    # Check if file was provided
     if "logfile" not in request.files:
-        return render_template(
-            "index.html",
-            results=None,
-            metadata=None,
-            error="No file provided. Please select a .log file to upload.",
-        )
+        return jsonify({"error": "No file provided. Please select a .log file to upload."}), 400
 
     file = request.files["logfile"]
 
-    # Check if file is empty
     if file.filename == "":
-        return render_template(
-            "index.html",
-            results=None,
-            metadata=None,
-            error="No file selected. Please choose a file to upload.",
-        )
+        return jsonify({"error": "No file selected. Please choose a file to upload."}), 400
 
-    # Check file extension
     if not file.filename.endswith(".log"):
-        return render_template(
-            "index.html",
-            results=None,
-            metadata=None,
-            error="Only Zeek .log files are supported.",
-        )
+        return jsonify({"error": "Only Zeek .log files are supported."}), 400
 
-    # Save temporarily and analyze
     temp_path = "uploaded.log"
     file.save(temp_path)
 
@@ -114,15 +92,12 @@ def upload():
 
         last_results = results
 
-        return render_template("index.html", results=results, metadata=metadata, error=None)
+        return jsonify({"results": results, "metadata": metadata})
 
     except Exception:
-        return render_template(
-            "index.html",
-            results=None,
-            metadata=None,
-            error="Could not parse file — make sure it is a valid Zeek conn.log file.",
-        )
+        return jsonify({
+            "error": "Could not parse file — make sure it is a valid Zeek conn.log file."
+        }), 400
 
 
 @app.route("/download-csv")
@@ -136,10 +111,8 @@ def download_csv():
     output = io.StringIO()
     writer = csv.writer(output)
 
-    # Header row
     writer.writerow(["Type", "Source IP", "Count", "Timespan (seconds)", "Severity"])
 
-    # Data rows from anomalies
     for anomaly in last_results.get("anomalies", []):
         writer.writerow([
             anomaly.get("type", ""),
@@ -149,7 +122,6 @@ def download_csv():
             anomaly.get("severity", ""),
         ])
 
-    # Convert to bytes for send_file
     mem = io.BytesIO()
     mem.write(output.getvalue().encode("utf-8"))
     mem.seek(0)

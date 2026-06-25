@@ -283,6 +283,26 @@ def get_timeline_data(events):
     return timeline
 
 
+def _get_ip_reputation(ip):
+    """Determine IP reputation based on address range."""
+    if ip.startswith("127."):
+        return "LOOPBACK"
+    if ip.startswith("10."):
+        return "PRIVATE"
+    if ip.startswith("192.168."):
+        return "PRIVATE"
+    if ip.startswith("172."):
+        parts = ip.split(".")
+        if len(parts) >= 2:
+            try:
+                second_octet = int(parts[1])
+                if 16 <= second_octet <= 31:
+                    return "PRIVATE"
+            except ValueError:
+                pass
+    return "EXTERNAL"
+
+
 def analyze_file(filepath):
     """Master function: parse, detect all anomalies, and return full analysis."""
     events = parse_log(filepath)
@@ -298,6 +318,28 @@ def analyze_file(filepath):
     flagged_ips = get_flagged_ips(anomalies)
     timeline_data = get_timeline_data(events)
 
+    # Protocol breakdown
+    protocol_counts = defaultdict(int)
+    for e in events:
+        protocol_counts[e["protocol"]] += 1
+    protocol_breakdown = dict(protocol_counts)
+
+    # Connection states
+    state_counts = defaultdict(int)
+    for e in events:
+        state_counts[e["conn_state"]] += 1
+    connection_states = dict(state_counts)
+
+    # Top talkers — top 5 source IPs by connection count
+    ip_counts = defaultdict(int)
+    for e in events:
+        ip_counts[e["src_ip"]] += 1
+    sorted_ips = sorted(ip_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+    top_talkers = [
+        {"ip": ip, "count": count, "reputation": _get_ip_reputation(ip)}
+        for ip, count in sorted_ips
+    ]
+
     # Get last 20 raw lines from file
     raw_lines = []
     with open(filepath, "r") as f:
@@ -311,6 +353,9 @@ def analyze_file(filepath):
         "flagged_ips": flagged_ips,
         "timeline_data": timeline_data,
         "raw_lines": raw_lines,
+        "protocol_breakdown": protocol_breakdown,
+        "connection_states": connection_states,
+        "top_talkers": top_talkers,
     }
 
 

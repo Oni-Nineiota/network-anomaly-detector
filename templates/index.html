@@ -1,8 +1,635 @@
-
 <!DOCTYPE html>
-<html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NETWORK ANOMALY DETECTOR</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
 <body>
-    <h1>Network Anomaly Detector</h1>
-    <p>Working.</p>
+
+<!-- MATRIX RAIN CANVAS -->
+<canvas id="matrixCanvas"></canvas>
+
+<!-- BOOT OVERLAY -->
+<div id="bootOverlay">
+    <div id="bootText"></div>
+</div>
+
+<!-- MAIN CONTENT -->
+<div class="container" id="mainContent" style="opacity: 0;">
+
+    <!-- HEADER -->
+    <div class="header">
+        <h1 id="titleText"></h1><span class="cursor"></span>
+        <span class="subtitle">ZEEK LOG ANALYSIS SYSTEM v1.0</span>
+    </div>
+
+    <!-- ABOUT -->
+    <div class="about">
+        <p>NETWORK ANOMALY DETECTOR &mdash; A real-time network log analysis tool that detects brute force attacks, port scans, and traffic anomalies in Zeek conn.log format. Built for security analysts and researchers.</p>
+        <p>USAGE: Select a sample scenario or upload your own Zeek conn.log file. Supported format: standard Zeek conn.log tab-separated (14 fields per line). Analysis results appear below. Use DOWNLOAD REPORT to export findings as CSV.</p>
+    </div>
+
+    <!-- SAMPLE BUTTONS -->
+    <div class="section">
+        <div class="section-header">&gt; SELECT SCENARIO</div>
+        <div class="button-row">
+            <a href="#" class="btn" data-scenario="brute_force">BRUTE FORCE</a>
+            <a href="#" class="btn" data-scenario="port_scan">PORT SCAN</a>
+            <a href="#" class="btn" data-scenario="normal_traffic">NORMAL TRAFFIC</a>
+            <a href="#" class="btn" data-scenario="combined_attack">COMBINED ATTACK</a>
+        </div>
+    </div>
+
+    <!-- UPLOAD SECTION -->
+    <div class="section">
+        <div class="section-header">&gt; UPLOAD LOG FILE</div>
+        <div class="upload-zone" id="uploadZone">
+            <span id="uploadLabel">DROP ZEEK .LOG FILE HERE OR CLICK TO BROWSE</span>
+            <input type="file" id="fileInput" accept=".log">
+        </div>
+        <button class="btn" id="analyzeBtn">ANALYZE FILE</button>
+    </div>
+
+    <!-- LOADING -->
+    <div id="loadingSection">
+        <div class="loading-status" id="loadingStatus"></div>
+        <div class="progress-bar-container">
+            <div class="progress-bar-fill" id="progressBar"></div>
+        </div>
+    </div>
+
+    <!-- ERROR -->
+    <div id="errorSection">
+        <span>&gt; ERROR: </span><span id="errorMessage"></span>
+    </div>
+
+    <!-- RESULTS -->
+    <div id="resultsSection">
+        <!-- Layer 1: Metadata -->
+        <div class="result-layer" id="layer1">
+            <div class="metadata-bar" id="metadataBar"></div>
+        </div>
+
+        <!-- Layer 2: Summary Cards -->
+        <div class="result-layer" id="layer2">
+            <div class="summary-cards" id="summaryCards"></div>
+        </div>
+
+        <!-- Layer 3: Stat Panels -->
+        <div class="result-layer" id="layer3">
+            <div class="stat-panels" id="statPanels"></div>
+        </div>
+
+        <!-- Layer 4: Flagged IPs -->
+        <div class="result-layer" id="layer4">
+            <div class="flagged-ips" id="flaggedIps"></div>
+        </div>
+
+        <!-- Layer 5: Timeline Chart -->
+        <div class="result-layer" id="layer5">
+            <div class="section-header">TRAFFIC TIMELINE</div>
+            <div class="chart-container">
+                <canvas id="trafficChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Layer 6: Heatmap -->
+        <div class="result-layer" id="layer6">
+            <div class="section-header">SEVERITY HEATMAP</div>
+            <div class="heatmap-container" id="heatmapContainer"></div>
+        </div>
+
+        <!-- Layer 7: Anomaly Table -->
+        <div class="result-layer" id="layer7">
+            <div class="section-header">DETECTED ANOMALIES</div>
+            <div id="anomalyTableContainer"></div>
+        </div>
+
+        <!-- Layer 8: Raw Log -->
+        <div class="result-layer" id="layer8">
+            <div class="section-header">RAW LOG PREVIEW &mdash; LAST 20 LINES</div>
+            <pre class="raw-log" id="rawLog"></pre>
+        </div>
+    </div>
+
+</div>
+
+<!-- CHART.JS CDN -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+// ===========================
+// MATRIX RAIN
+// ===========================
+(function() {
+    const canvas = document.getElementById('matrixCanvas');
+    const ctx = canvas.getContext('2d');
+
+    function resize() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    const chars = 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const fontSize = 14;
+    let columns = Math.floor(canvas.width / fontSize);
+    let drops = Array(columns).fill(1);
+
+    function draw() {
+        ctx.fillStyle = 'rgba(2, 13, 2, 0.05)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.fillStyle = '#00ff41';
+        ctx.font = fontSize + 'px Courier New';
+
+        for (let i = 0; i < drops.length; i++) {
+            const char = chars[Math.floor(Math.random() * chars.length)];
+            const x = i * fontSize;
+            const y = drops[i] * fontSize;
+
+            ctx.globalAlpha = Math.random() * 0.5 + 0.5;
+            ctx.fillText(char, x, y);
+            ctx.globalAlpha = 1;
+
+            if (y > canvas.height && Math.random() > 0.975) {
+                drops[i] = 0;
+            }
+            drops[i]++;
+        }
+        requestAnimationFrame(draw);
+    }
+
+    window.addEventListener('resize', function() {
+        columns = Math.floor(canvas.width / fontSize);
+        drops = Array(columns).fill(1);
+    });
+
+    draw();
+})();
+
+// ===========================
+// BOOT SEQUENCE
+// ===========================
+(function() {
+    const bootLines = [
+        'SYSTEM BIOS v2.4.1 .............. OK',
+        'MEMORY CHECK 8192MB .............. OK',
+        'NETWORK INTERFACE DETECTED ....... OK',
+        'LOADING ANOMALY ENGINE v1.0 ...... OK',
+        'IMPORTING ZEEK LOG PARSER ........ OK',
+        'CALIBRATING DETECTION THRESHOLDS . OK',
+        'BRUTE FORCE MODULE ............... ARMED',
+        'PORT SCAN MODULE ................. ARMED',
+        'TRAFFIC SPIKE MODULE ............. ARMED',
+        'THREAT SCORING ENGINE ............ ONLINE',
+        '',
+        '\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550',
+        ' NETWORK ANOMALY DETECTOR READY',
+        '\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550',
+    ];
+
+    const bootText = document.getElementById('bootText');
+    const overlay = document.getElementById('bootOverlay');
+    let lineIndex = 0;
+
+    function showNextLine() {
+        if (lineIndex < bootLines.length) {
+            bootText.textContent += bootLines[lineIndex] + '\n';
+            lineIndex++;
+            setTimeout(showNextLine, 200);
+        } else {
+            setTimeout(function() {
+                overlay.classList.add('fade-out');
+                setTimeout(function() {
+                    overlay.style.display = 'none';
+                    document.getElementById('mainContent').style.opacity = '1';
+                    typeTitle();
+                }, 800);
+            }, 800);
+        }
+    }
+
+    setTimeout(showNextLine, 400);
+})();
+
+// ===========================
+// TYPEWRITER TITLE
+// ===========================
+function typeTitle() {
+    const titleEl = document.getElementById('titleText');
+    const text = 'NETWORK ANOMALY DETECTOR';
+    let i = 0;
+    function typeChar() {
+        if (i < text.length) {
+            titleEl.textContent += text[i];
+            i++;
+            setTimeout(typeChar, 1000 / text.length);
+        }
+    }
+    typeChar();
+}
+
+// ===========================
+// GLITCH EFFECT
+// ===========================
+setInterval(function() {
+    const title = document.getElementById('titleText');
+    title.classList.add('glitch');
+    setTimeout(function() {
+        title.classList.remove('glitch');
+    }, 200);
+}, 10000);
+
+// ===========================
+// UPLOAD ZONE
+// ===========================
+(function() {
+    const zone = document.getElementById('uploadZone');
+    const input = document.getElementById('fileInput');
+    const label = document.getElementById('uploadLabel');
+
+    zone.addEventListener('click', function() {
+        input.click();
+    });
+
+    zone.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        zone.classList.add('dragover');
+    });
+
+    zone.addEventListener('dragleave', function() {
+        zone.classList.remove('dragover');
+    });
+
+    zone.addEventListener('drop', function(e) {
+        e.preventDefault();
+        zone.classList.remove('dragover');
+        if (e.dataTransfer.files.length > 0) {
+            input.files = e.dataTransfer.files;
+            label.textContent = e.dataTransfer.files[0].name;
+            zone.classList.add('has-file');
+        }
+    });
+
+    input.addEventListener('change', function() {
+        if (input.files.length > 0) {
+            label.textContent = input.files[0].name;
+            zone.classList.add('has-file');
+        }
+    });
+})();
+
+// ===========================
+// SAMPLE BUTTONS
+// ===========================
+document.querySelectorAll('[data-scenario]').forEach(function(btn) {
+    btn.addEventListener('click', function(e) {
+        e.preventDefault();
+        const scenario = this.getAttribute('data-scenario');
+        runAnalysis('/load-sample/' + scenario);
+    });
+});
+
+// ===========================
+// ANALYZE BUTTON
+// ===========================
+document.getElementById('analyzeBtn').addEventListener('click', function(e) {
+    e.preventDefault();
+    const input = document.getElementById('fileInput');
+    if (!input.files || input.files.length === 0) {
+        showError('No file selected. Please choose a .log file to upload.');
+        return;
+    }
+    const formData = new FormData();
+    formData.append('logfile', input.files[0]);
+    runAnalysis('/upload', {method: 'POST', body: formData});
+});
+
+// ===========================
+// LOADING ANIMATION
+// ===========================
+function runLoadingAnimation() {
+    return new Promise(function(resolve) {
+        const messages = [
+            '> INITIALIZING PARSER...',
+            '> LOADING LOG FILE...',
+            '> READING ENTRIES...',
+            '> ANALYZING CONNECTIONS...',
+            '> DETECTING ANOMALIES...',
+            '> CALCULATING THREAT SCORE...',
+            '> GENERATING REPORT...',
+            '> COMPLETE.'
+        ];
+
+        const loadingSection = document.getElementById('loadingSection');
+        const statusEl = document.getElementById('loadingStatus');
+        const progressBar = document.getElementById('progressBar');
+
+        loadingSection.classList.add('visible');
+        progressBar.style.width = '0%';
+
+        let idx = 0;
+        const interval = 3000 / messages.length;
+
+        function showNext() {
+            if (idx < messages.length) {
+                statusEl.textContent = messages[idx];
+                progressBar.style.width = ((idx + 1) / messages.length * 100) + '%';
+                idx++;
+                setTimeout(showNext, interval);
+            } else {
+                setTimeout(function() {
+                    loadingSection.classList.remove('visible');
+                    resolve();
+                }, 300);
+            }
+        }
+        showNext();
+    });
+}
+
+// ===========================
+// RUN ANALYSIS (CORE)
+// ===========================
+let chartInstance = null;
+
+function runAnalysis(url, fetchOptions) {
+    // Hide previous results and errors
+    document.getElementById('resultsSection').classList.remove('visible');
+    document.getElementById('errorSection').classList.remove('visible');
+
+    // Reset layer animations
+    for (let i = 1; i <= 8; i++) {
+        document.getElementById('layer' + i).classList.remove('revealed');
+    }
+
+    const fetchOpts = fetchOptions || {};
+    const fetchPromise = fetch(url, fetchOpts).then(function(resp) {
+        return resp.json();
+    });
+
+    const animPromise = runLoadingAnimation();
+
+    Promise.all([fetchPromise, animPromise]).then(function(values) {
+        const data = values[0];
+        if (data.error) {
+            showError(data.error);
+        } else {
+            renderResults(data.results, data.metadata);
+        }
+    }).catch(function(err) {
+        showError('Network error — could not reach the server.');
+    });
+}
+
+// ===========================
+// SHOW ERROR
+// ===========================
+function showError(msg) {
+    const section = document.getElementById('errorSection');
+    document.getElementById('errorMessage').textContent = msg;
+    section.classList.add('visible');
+}
+
+document.getElementById('errorSection').addEventListener('click', function() {
+    this.classList.remove('visible');
+});
+
+// ===========================
+// RENDER RESULTS
+// ===========================
+function renderResults(results, metadata) {
+    const resultsSection = document.getElementById('resultsSection');
+    resultsSection.classList.add('visible');
+
+    // Layer 1: Metadata
+    document.getElementById('metadataBar').textContent =
+        '> FILE: ' + metadata.filename +
+        ' | ANALYZED: ' + metadata.analyzed_at +
+        ' | PROCESSED IN: ' + metadata.processing_time_ms + 'ms';
+
+    // Layer 2: Summary Cards
+    const score = results.threat_score;
+    let scoreClass = '';
+    if (score >= 70) scoreClass = 'score-red';
+    else if (score >= 30) scoreClass = 'score-yellow';
+
+    document.getElementById('summaryCards').innerHTML =
+        '<div class="card"><div class="card-label">TOTAL EVENTS</div><div class="card-value">' + results.total_events + '</div></div>' +
+        '<div class="card"><div class="card-label">ANOMALIES FOUND</div><div class="card-value">' + results.anomalies.length + '</div></div>' +
+        '<div class="card ' + scoreClass + '"><div class="card-label">THREAT SCORE</div><div class="card-value">' + score + '/100</div></div>' +
+        '<div class="card"><div class="card-label">IPs FLAGGED</div><div class="card-value">' + Object.keys(results.flagged_ips).length + '</div></div>';
+
+    // Layer 3: Stat Panels
+    let panelA = '<div class="stat-panel"><div class="panel-header">PROTOCOL BREAKDOWN</div>';
+    for (const [proto, count] of Object.entries(results.protocol_breakdown)) {
+        const dots = '.'.repeat(Math.max(1, 20 - proto.length - String(count).length));
+        panelA += '<div class="panel-line">' + proto.toUpperCase() + ' ' + dots + ' <span class="value">' + count + '</span></div>';
+    }
+    panelA += '</div>';
+
+    const stateLabels = {SF: 'SUCCESSFUL', S0: 'NO RESPONSE', REJ: 'REJECTED', S1: 'INITIATED', RSTO: 'RESET ORIG', RSTOS0: 'RESET NO RESP'};
+    let panelB = '<div class="stat-panel"><div class="panel-header">CONNECTION STATES</div>';
+    for (const [state, count] of Object.entries(results.connection_states)) {
+        const dots = '.'.repeat(Math.max(1, 14 - state.length - String(count).length));
+        const tag = stateLabels[state] || state;
+        panelB += '<div class="panel-line">' + state + ' ' + dots + ' <span class="value">' + count + '</span> <span class="tag">[' + tag + ']</span></div>';
+    }
+    panelB += '</div>';
+
+    let panelC = '<div class="stat-panel"><div class="panel-header">TOP TALKERS</div>';
+    for (const talker of results.top_talkers) {
+        const dots = '.'.repeat(Math.max(1, 18 - talker.ip.length - String(talker.count).length));
+        panelC += '<div class="panel-line">' + talker.ip + ' ' + dots + ' <span class="value">' + talker.count + '</span> conn <span class="tag">[' + talker.reputation + ']</span></div>';
+    }
+    panelC += '</div>';
+
+    document.getElementById('statPanels').innerHTML = panelA + panelB + panelC;
+
+    // Layer 4: Flagged IPs
+    const flaggedEl = document.getElementById('flaggedIps');
+    const flaggedKeys = Object.keys(results.flagged_ips);
+    if (flaggedKeys.length > 0) {
+        let html = '<div class="section-header">&gt; FLAGGED IPs</div>';
+        for (const ip of flaggedKeys) {
+            const detections = results.flagged_ips[ip].join(', ');
+            const isHigh = detections.includes('HIGH');
+            html += '<div class="ip-line' + (isHigh ? ' high' : '') + '">&gt;&gt; ' + ip + ' &mdash; ' + detections + '</div>';
+        }
+        flaggedEl.innerHTML = html;
+    } else {
+        flaggedEl.innerHTML = '';
+    }
+
+    // Layer 5: Timeline Chart
+    if (chartInstance) {
+        chartInstance.destroy();
+        chartInstance = null;
+    }
+
+    const labels = results.timeline_data.map(function(d, i) { return i; });
+    const counts = results.timeline_data.map(function(d) { return d.count; });
+
+    const ctx = document.getElementById('trafficChart').getContext('2d');
+    chartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Connections',
+                data: counts,
+                borderColor: '#00ff41',
+                backgroundColor: 'rgba(0, 255, 65, 0.03)',
+                borderWidth: 1.5,
+                pointRadius: 0,
+                fill: true,
+                tension: 0.2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                x: {
+                    display: true,
+                    ticks: { color: '#008f11', maxTicksLimit: 10, font: { family: "'Courier New', Courier, monospace", size: 10 } },
+                    grid: { display: false },
+                    border: { color: '#008f11' }
+                },
+                y: {
+                    display: true,
+                    ticks: { color: '#008f11', font: { family: "'Courier New', Courier, monospace", size: 10 } },
+                    grid: { display: false },
+                    border: { color: '#008f11' }
+                }
+            }
+        }
+    });
+
+    // Layer 6: Heatmap
+    buildHeatmap(results);
+
+    // Layer 7: Anomaly Table
+    buildAnomalyTable(results);
+
+    // Layer 8: Raw Log
+    document.getElementById('rawLog').textContent = results.raw_lines.join('\n');
+
+    // Reveal layers with stagger
+    for (let i = 1; i <= 8; i++) {
+        (function(idx) {
+            setTimeout(function() {
+                document.getElementById('layer' + idx).classList.add('revealed');
+            }, idx * 150);
+        })(i);
+    }
+}
+
+// ===========================
+// HEATMAP
+// ===========================
+function buildHeatmap(results) {
+    const container = document.getElementById('heatmapContainer');
+    const types = ['BRUTE_FORCE', 'PORT_SCAN', 'TRAFFIC_SPIKE'];
+    const timeline = results.timeline_data;
+    const numBuckets = Math.min(timeline.length, 80); // Cap columns for readability
+    const bucketSize = Math.max(1, Math.floor(timeline.length / numBuckets));
+
+    // Map anomalies to time buckets
+    const anomalyMap = {};
+    types.forEach(function(t) { anomalyMap[t] = new Array(numBuckets).fill(null); });
+
+    const minTs = timeline.length > 0 ? timeline[0].bucket_start : 0;
+    const maxTs = timeline.length > 0 ? timeline[timeline.length - 1].bucket_start : 1;
+    const totalSpan = maxTs - minTs || 1;
+
+    results.anomalies.forEach(function(a) {
+        let ts = a.window_start || 0;
+        // For brute force / port scan, approximate position
+        if (!ts && a.timespan_seconds !== undefined) {
+            // Place at middle of log for these
+            ts = minTs + totalSpan * 0.5;
+        }
+        const bucketIdx = Math.min(numBuckets - 1, Math.floor((ts - minTs) / totalSpan * numBuckets));
+        if (anomalyMap[a.type] && bucketIdx >= 0) {
+            const current = anomalyMap[a.type][bucketIdx];
+            if (!current || severityRank(a.severity) > severityRank(current)) {
+                anomalyMap[a.type][bucketIdx] = a.severity;
+            }
+        }
+    });
+
+    let html = '<div class="heatmap-grid">';
+    types.forEach(function(type) {
+        html += '<div class="heatmap-row">';
+        html += '<div class="heatmap-label">' + type + '</div>';
+        html += '<div class="heatmap-cells">';
+        for (let i = 0; i < numBuckets; i++) {
+            const sev = anomalyMap[type][i];
+            let cls = '';
+            if (sev === 'HIGH') cls = ' severity-high';
+            else if (sev === 'MEDIUM') cls = ' severity-medium';
+            else if (sev === 'LOW') cls = ' severity-low';
+            html += '<div class="heatmap-cell' + cls + '"></div>';
+        }
+        html += '</div></div>';
+    });
+    html += '</div>';
+
+    html += '<div class="heatmap-legend">';
+    html += '<span><span class="legend-swatch none"></span> NONE</span>';
+    html += '<span><span class="legend-swatch low"></span> LOW</span>';
+    html += '<span><span class="legend-swatch medium"></span> MEDIUM</span>';
+    html += '<span><span class="legend-swatch high"></span> HIGH</span>';
+    html += '</div>';
+
+    container.innerHTML = html;
+}
+
+function severityRank(s) {
+    if (s === 'HIGH') return 3;
+    if (s === 'MEDIUM') return 2;
+    if (s === 'LOW') return 1;
+    return 0;
+}
+
+// ===========================
+// ANOMALY TABLE
+// ===========================
+function buildAnomalyTable(results) {
+    const container = document.getElementById('anomalyTableContainer');
+    const anomalies = results.anomalies;
+
+    if (anomalies.length === 0) {
+        container.innerHTML = '<div class="no-anomalies">&gt; NO ANOMALIES DETECTED</div>';
+        return;
+    }
+
+    let html = '<table class="anomaly-table"><thead><tr><th>TYPE</th><th>SOURCE IP</th><th>COUNT</th><th>TIMESPAN</th><th>SEVERITY</th></tr></thead><tbody>';
+
+    anomalies.forEach(function(a) {
+        const srcIp = a.src_ip || 'N/A';
+        const count = a.count || a.unique_ports || a.connection_count || '';
+        const timespan = a.timespan_seconds !== undefined ? a.timespan_seconds + 's' : '';
+        let sevClass = '';
+        if (a.severity === 'HIGH') sevClass = 'severity-high';
+        else if (a.severity === 'MEDIUM') sevClass = 'severity-medium';
+        else sevClass = 'severity-low';
+
+        html += '<tr><td>' + a.type + '</td><td>' + srcIp + '</td><td>' + count + '</td><td>' + timespan + '</td><td class="' + sevClass + '">' + a.severity + '</td></tr>';
+    });
+
+    html += '</tbody></table>';
+    html += '<a href="/download-csv" class="btn" style="margin-top: 12px; display: inline-block;">DOWNLOAD REPORT</a>';
+
+    container.innerHTML = html;
+}
+
+</script>
 </body>
 </html>
