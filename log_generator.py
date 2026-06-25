@@ -187,8 +187,73 @@ def generate_normal_traffic():
     print(f"Written sample_logs/normal_traffic.log ({len(lines)} lines)")
 
 
+def generate_combined_attack():
+    """Generate a combined attack log with 500+ lines.
+
+    Plants two simultaneous attacks:
+    - 192.168.1.45 brute forcing SSH (40 attempts over 90s starting at 10 min mark)
+    - 10.0.0.23 port scanning 22 ports within 45s starting at 12 min mark
+    Rest is normal background traffic from 8 IPs over 1 hour.
+    """
+    base_time = time.time() - 3600
+    one_hour = 3600.0
+
+    # Generate 8 random source IPs for normal traffic
+    normal_ips = [_random_ip() for _ in range(8)]
+
+    # Normal background traffic
+    normal_count = random.randint(450, 470)
+    lines = _normal_traffic_lines(normal_count, base_time, one_hour, normal_ips)
+
+    # Attack 1: Brute force from 192.168.1.45 starting at 10 minute mark
+    brute_start = base_time + 600.0  # 10 minutes in
+    attacker_ip = "192.168.1.45"
+
+    for _ in range(40):
+        ts = brute_start + random.uniform(0, 90.0)
+        src_port = random.randint(1024, 65535)
+        dst_ip = _random_ip()
+        conn_id = _random_conn_id()
+        dur = random.uniform(0.0, 0.5)
+        bytes_sent = random.randint(0, 100)
+        bytes_recv = 0
+        pkts_sent = random.randint(1, 3)
+        pkts_recv = 0
+
+        lines.append(_format_line(ts, conn_id, attacker_ip, src_port, dst_ip, 22, "tcp", "ssh", "S0", dur, bytes_sent, bytes_recv, pkts_sent, pkts_recv))
+
+    # Attack 2: Port scan from 10.0.0.23 starting at 12 minute mark
+    scan_start = base_time + 720.0  # 12 minutes in
+    scanner_ip = "10.0.0.23"
+    scan_target = _random_ip()
+    scan_ports = [21, 22, 23, 25, 53, 80, 110, 135, 139, 443, 445, 3306, 3389, 5900, 6379, 8080, 8443, 9200, 27017, 5432, 143, 993]
+
+    for port in scan_ports:
+        ts = scan_start + random.uniform(0, 45.0)
+        src_port = random.randint(1024, 65535)
+        conn_id = _random_conn_id()
+        dur = random.uniform(0.0, 0.3)
+        bytes_sent = random.randint(0, 80)
+        bytes_recv = 0
+        pkts_sent = random.randint(1, 2)
+        pkts_recv = 0
+        service = "-"
+
+        lines.append(_format_line(ts, conn_id, scanner_ip, src_port, scan_target, port, "tcp", service, "S0", dur, bytes_sent, bytes_recv, pkts_sent, pkts_recv))
+
+    # Sort by timestamp
+    lines.sort(key=lambda l: float(l.split('\t')[0]))
+
+    os.makedirs("sample_logs", exist_ok=True)
+    with open("sample_logs/combined_attack.log", "w") as f:
+        f.write("\n".join(lines) + "\n")
+
+    print(f"Written sample_logs/combined_attack.log ({len(lines)} lines)")
+
+
 if __name__ == "__main__":
     generate_brute_force()
     generate_port_scan()
     generate_normal_traffic()
+    generate_combined_attack()
     print("\nAll log files generated successfully.")
