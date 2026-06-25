@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>INCIDENT REPORT — NETWORK ANOMALY DETECTOR</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bright-green: #00ff41;
+            --medium-green: #00cc33;
+            --dim-green: #008f11;
+            --bg-black: #020d02;
+            --red: #ff0000;
+            --yellow: #ffff00;
+        }
+
+        body {
+            background-color: var(--bg-black);
+            background-image: repeating-linear-gradient(
+                0deg,
+                transparent,
+                transparent 2px,
+                rgba(0, 0, 0, 0.15) 2px,
+                rgba(0, 0, 0, 0.15) 4px
+            );
+            color: var(--bright-green);
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 13px;
+            line-height: 1.7;
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+
+        .report-container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .controls {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 30px;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 10px 20px;
+            border: 1px solid var(--medium-green);
+            background: var(--bg-black);
+            color: var(--bright-green);
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 13px;
+            text-decoration: none;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            cursor: pointer;
+            transition: box-shadow 0.2s ease, background 0.2s ease;
+        }
+
+        .btn:hover {
+            background: #001a00;
+            box-shadow: 0 0 8px var(--bright-green);
+        }
+
+        .report-body {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .separator {
+            color: var(--medium-green);
+        }
+
+        .dim {
+            color: var(--dim-green);
+        }
+
+        .bright {
+            color: var(--bright-green);
+        }
+
+        .risk-low {
+            color: var(--bright-green);
+            font-weight: bold;
+        }
+
+        .risk-elevated {
+            color: var(--yellow);
+            font-weight: bold;
+        }
+
+        .risk-high {
+            color: var(--red);
+            font-weight: bold;
+        }
+
+        .severity-high {
+            color: var(--red);
+        }
+
+        .severity-medium {
+            color: var(--yellow);
+        }
+
+        .section-divider {
+            color: var(--medium-green);
+            margin: 8px 0;
+        }
+
+        .finding-divider {
+            color: var(--dim-green);
+        }
+
+        @media print {
+            body {
+                background: #000000;
+                background-image: none;
+                padding: 20px;
+                font-size: 11px;
+            }
+
+            .controls {
+                display: none;
+            }
+
+            .report-container {
+                max-width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="report-container">
+
+        <!-- CONTROLS -->
+        <div class="controls">
+            <button class="btn" onclick="window.print()">PRINT</button>
+            <a href="/" class="btn">BACK</a>
+        </div>
+
+        <!-- REPORT BODY -->
+        <div class="report-body">
+<span class="separator">&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;</span>
+<span class="bright">     NETWORK ANOMALY DETECTOR — INCIDENT REPORT</span>
+<span class="separator">&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;</span>
+
+<span class="dim">GENERATED:</span>       {{ metadata.analyzed_at }}
+<span class="dim">FILE ANALYZED:</span>   {{ metadata.filename }}
+<span class="dim">PROCESSING TIME:</span> {{ metadata.processing_time_ms }}ms
+
+<span class="separator">&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;</span>
+<span class="bright">EXECUTIVE SUMMARY</span>
+<span class="separator">&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;</span>
+
+TOTAL EVENTS ANALYZED: <span class="bright">{{ results.total_events }}</span>
+ANOMALIES DETECTED:    <span class="bright">{{ results.anomalies|length }}</span>
+THREAT SCORE:          <span class="bright">{{ results.threat_score }}/100</span>
+
+RISK LEVEL: {% if results.threat_score >= 70 %}<span class="risk-high">[HIGH RISK]</span>{% elif results.threat_score >= 30 %}<span class="risk-elevated">[ELEVATED RISK]</span>{% else %}<span class="risk-low">[LOW RISK]</span>{% endif %}
+
+<span class="separator">&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;</span>
+<span class="bright">THREAT ACTORS</span>
+<span class="separator">&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;</span>
+{% if flagged_ips_list %}{% for item in flagged_ips_list %}
+&gt;&gt; <span class="bright">{{ item.ip }}</span>
+   DETECTIONS:  {{ item.detections|join(', ') }}
+   REPUTATION:  {{ item.reputation }}
+{% endfor %}{% else %}
+&gt; NO THREAT ACTORS IDENTIFIED
+{% endif %}
+<span class="separator">&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;</span>
+<span class="bright">DETAILED FINDINGS</span>
+<span class="separator">&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;</span>
+{% if results.anomalies %}{% for anomaly in results.anomalies %}
+[{{ loop.index }}] TYPE: <span class="bright">{{ anomaly.type }}</span>
+    SEVERITY: {% if anomaly.severity == 'HIGH' %}<span class="severity-high">{{ anomaly.severity }}</span>{% elif anomaly.severity == 'MEDIUM' %}<span class="severity-medium">{{ anomaly.severity }}</span>{% else %}{{ anomaly.severity }}{% endif %}{% if anomaly.src_ip is defined %}
+    SOURCE IP: {{ anomaly.src_ip }}{% endif %}{% if anomaly.count is defined %}
+    EVENT COUNT: {{ anomaly.count }}{% endif %}{% if anomaly.unique_ports is defined %}
+    UNIQUE PORTS: {{ anomaly.unique_ports }}{% endif %}{% if anomaly.connection_count is defined %}
+    CONNECTIONS: {{ anomaly.connection_count }}{% endif %}{% if anomaly.timespan_seconds is defined %}
+    TIMESPAN: {{ anomaly.timespan_seconds }}s{% endif %}{% if anomaly.multiplier is defined %}
+    MULTIPLIER: {{ anomaly.multiplier }}x baseline{% endif %}
+<span class="finding-divider">────────────────────────────────────────────────────</span>
+{% endfor %}{% else %}
+&gt; NO ANOMALIES DETECTED
+{% endif %}
+<span class="separator">&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;</span>
+<span class="bright">NETWORK STATISTICS</span>
+<span class="separator">&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;</span>
+
+PROTOCOL BREAKDOWN:
+{% for proto, count in results.protocol_breakdown.items() %}  {{ proto|upper }} ........... {{ count }}
+{% endfor %}
+CONNECTION STATES:
+{% for state, count in results.connection_states.items() %}  {{ state }} ........... {{ count }}
+{% endfor %}
+TOP TALKERS:
+{% for talker in results.top_talkers %}  {{ talker.ip }} ... {{ talker.count }} connections [{{ talker.reputation }}]
+{% endfor %}
+<span class="separator">&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;</span>
+<span class="bright">RECOMMENDATIONS</span>
+<span class="separator">&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;</span>
+{% if results.threat_score >= 70 %}
+<span class="severity-high">[!] CRITICAL: Immediate investigation required.</span>
+    Block flagged IPs at firewall level.
+    Review authentication logs for compromise.
+    Consider isolating affected systems.
+{% elif results.threat_score >= 30 %}
+<span class="severity-medium">[!] WARNING: Suspicious activity detected.</span>
+    Monitor flagged IPs closely.
+    Review access logs for anomalies.
+    Consider rate limiting on affected services.
+{% else %}
+<span class="risk-low">[OK] No immediate action required.</span>
+     Continue routine monitoring.
+     Schedule regular log reviews.
+{% endif %}
+<span class="separator">&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;</span>
+<span class="dim">END OF REPORT — NETWORK ANOMALY DETECTOR v1.0</span>
+<span class="separator">&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;</span>
+</div>
+
+    </div>
+</body>
+</html>

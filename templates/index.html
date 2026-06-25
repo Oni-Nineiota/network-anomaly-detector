@@ -107,8 +107,14 @@
             <div id="anomalyTableContainer"></div>
         </div>
 
-        <!-- Layer 8: Raw Log -->
+        <!-- Layer 8: Recommendations -->
         <div class="result-layer" id="layer8">
+            <div class="section-header">&gt; RECOMMENDATIONS</div>
+            <div id="recommendationsContainer"></div>
+        </div>
+
+        <!-- Layer 9: Raw Log -->
+        <div class="result-layer" id="layer9">
             <div class="section-header">RAW LOG PREVIEW &mdash; LAST 20 LINES</div>
             <pre class="raw-log" id="rawLog"></pre>
         </div>
@@ -363,7 +369,7 @@ function runAnalysis(url, fetchOptions) {
     document.getElementById('errorSection').classList.remove('visible');
 
     // Reset layer animations
-    for (let i = 1; i <= 8; i++) {
+    for (let i = 1; i <= 9; i++) {
         document.getElementById('layer' + i).classList.remove('revealed');
     }
 
@@ -517,11 +523,14 @@ function renderResults(results, metadata) {
     // Layer 7: Anomaly Table
     buildAnomalyTable(results);
 
-    // Layer 8: Raw Log
+    // Layer 8: Recommendations
+    buildRecommendations(results);
+
+    // Layer 9: Raw Log
     document.getElementById('rawLog').textContent = results.raw_lines.join('\n');
 
     // Reveal layers with stagger
-    for (let i = 1; i <= 8; i++) {
+    for (let i = 1; i <= 9; i++) {
         (function(idx) {
             setTimeout(function() {
                 document.getElementById('layer' + idx).classList.add('revealed');
@@ -540,6 +549,14 @@ function buildHeatmap(results) {
     const numBuckets = Math.min(timeline.length, 80); // Cap columns for readability
     const bucketSize = Math.max(1, Math.floor(timeline.length / numBuckets));
 
+    // Build time labels from bucket_start timestamps
+    const timeLabels = [];
+    for (let i = 0; i < numBuckets; i++) {
+        const srcIdx = Math.min(i * bucketSize, timeline.length - 1);
+        const ts = timeline[srcIdx].bucket_start;
+        timeLabels.push(new Date(ts * 1000).toISOString().substr(11, 8));
+    }
+
     // Map anomalies to time buckets
     const anomalyMap = {};
     types.forEach(function(t) { anomalyMap[t] = new Array(numBuckets).fill(null); });
@@ -550,12 +567,8 @@ function buildHeatmap(results) {
 
     results.anomalies.forEach(function(a) {
         let ts = a.window_start || 0;
-        // For brute force / port scan, approximate position
-        if (!ts && a.timespan_seconds !== undefined) {
-            // Place at middle of log for these
-            ts = minTs + totalSpan * 0.5;
-        }
-        const bucketIdx = Math.min(numBuckets - 1, Math.floor((ts - minTs) / totalSpan * numBuckets));
+        if (!ts) return;
+        const bucketIdx = Math.min(numBuckets - 1, Math.max(0, Math.floor((ts - minTs) / totalSpan * numBuckets)));
         if (anomalyMap[a.type] && bucketIdx >= 0) {
             const current = anomalyMap[a.type][bucketIdx];
             if (!current || severityRank(a.severity) > severityRank(current)) {
@@ -579,6 +592,20 @@ function buildHeatmap(results) {
         }
         html += '</div></div>';
     });
+
+    // Time axis labels row
+    html += '<div class="heatmap-row">';
+    html += '<div class="heatmap-label"></div>';
+    html += '<div class="heatmap-cells heatmap-time-axis">';
+    for (let i = 0; i < numBuckets; i++) {
+        if (i % 10 === 0) {
+            html += '<div class="heatmap-cell heatmap-time-label">' + timeLabels[i] + '</div>';
+        } else {
+            html += '<div class="heatmap-cell heatmap-time-empty"></div>';
+        }
+    }
+    html += '</div></div>';
+
     html += '</div>';
 
     html += '<div class="heatmap-legend">';
@@ -596,6 +623,87 @@ function severityRank(s) {
     if (s === 'MEDIUM') return 2;
     if (s === 'LOW') return 1;
     return 0;
+}
+
+// ===========================
+// RECOMMENDATIONS
+// ===========================
+function buildRecommendations(results) {
+    const container = document.getElementById('recommendationsContainer');
+    const score = results.threat_score;
+    const anomalies = results.anomalies;
+
+    let borderColor, bgColor, textColor, content;
+
+    if (score >= 70) {
+        borderColor = '#ff0000';
+        bgColor = '#0d0000';
+        textColor = '#ff0000';
+        content = '[!!!] CRITICAL THREAT LEVEL DETECTED\n\n';
+        content += '  >> IMMEDIATE ACTIONS REQUIRED:\n';
+        content += '    > BLOCK flagged IPs at firewall level immediately\n';
+        content += '    > ISOLATE affected systems from network\n';
+        content += '    > REVIEW authentication logs for signs of compromise\n';
+        content += '    > ESCALATE to security team\n';
+        content += '    > PRESERVE log files for forensic investigation\n';
+    } else if (score >= 30) {
+        borderColor = '#ffff00';
+        bgColor = '#0d0b00';
+        textColor = '#ffff00';
+        content = '[!] ELEVATED THREAT LEVEL\n\n';
+        content += '  >> RECOMMENDED ACTIONS:\n';
+        content += '    > MONITOR flagged IPs for continued activity\n';
+        content += '    > REVIEW access logs on targeted services\n';
+        content += '    > CONSIDER rate limiting on affected ports\n';
+        content += '    > SCHEDULE full security audit\n';
+    } else if (anomalies.length > 0) {
+        borderColor = '#008f11';
+        bgColor = 'transparent';
+        textColor = '#008f11';
+        content = '[~] LOW THREAT LEVEL\n\n';
+        content += '  >> ADVISORY:\n';
+        content += '    > Continue routine monitoring\n';
+        content += '    > Log flagged IPs for future reference\n';
+        content += '    > No immediate action required\n';
+    } else {
+        borderColor = '#00ff41';
+        bgColor = 'transparent';
+        textColor = '#00ff41';
+        content = '[OK] SYSTEM CLEAR \u2014 NO THREATS DETECTED\n\n';
+        content += '  >> No anomalies found in analyzed log.\n';
+        content += '    > Continue routine monitoring\n';
+        content += '    > Schedule next log review\n';
+    }
+
+    // Detection-type specific recommendations
+    const types = new Set(anomalies.map(function(a) { return a.type; }));
+    if (types.size > 0) {
+        content += '\n  >> DETECTION-SPECIFIC ADVISORIES:\n';
+        if (types.has('BRUTE_FORCE')) {
+            content += '    > ENFORCE account lockout policy after 5 failed attempts\n';
+        }
+        if (types.has('PORT_SCAN')) {
+            content += '    > REVIEW firewall rules \u2014 consider blocking ICMP and closing unused ports\n';
+        }
+        if (types.has('TRAFFIC_SPIKE')) {
+            content += '    > INVESTIGATE traffic source \u2014 possible DDoS or data exfiltration attempt\n';
+        }
+    }
+
+    const glow = (score >= 70) ? '' : (score === 0 && anomalies.length === 0) ? 'box-shadow: 0 0 8px #00ff41;' : '';
+
+    container.innerHTML = '<pre style="' +
+        'border: 1px solid ' + borderColor + ';' +
+        'background: ' + bgColor + ';' +
+        'color: ' + textColor + ';' +
+        'padding: 16px;' +
+        'font-family: Courier New, Courier, monospace;' +
+        'font-size: 13px;' +
+        'line-height: 1.6;' +
+        'white-space: pre-wrap;' +
+        'overflow-x: auto;' +
+        glow +
+        '">' + content + '</pre>';
 }
 
 // ===========================
@@ -625,7 +733,7 @@ function buildAnomalyTable(results) {
     });
 
     html += '</tbody></table>';
-    html += '<a href="/download-csv" class="btn" style="margin-top: 12px; display: inline-block;">DOWNLOAD REPORT</a>';
+    html += '<a href="/report" target="_blank" class="btn" style="margin-top: 12px; display: block; width: 100%; box-sizing: border-box; text-align: center;">VIEW REPORT</a>';
 
     container.innerHTML = html;
 }

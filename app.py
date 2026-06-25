@@ -1,9 +1,7 @@
 """Flask web application for the Network Anomaly Detector."""
 
-from flask import Flask, request, render_template, jsonify, send_file
+from flask import Flask, request, render_template, jsonify, redirect, url_for
 import time
-import io
-import csv
 import os
 from datetime import datetime
 
@@ -11,8 +9,9 @@ from detector import analyze_file
 
 app = Flask(__name__)
 
-# Global state for last analysis results (used by /download-csv)
+# Global state for last analysis results (used by /report)
 last_results = None
+last_metadata = None
 
 # Map scenario names to file paths
 SAMPLE_FILES = {
@@ -32,7 +31,7 @@ def index():
 @app.route("/load-sample/<scenario>")
 def load_sample(scenario):
     """Load and analyze a sample log file, return JSON."""
-    global last_results
+    global last_results, last_metadata
 
     if scenario not in SAMPLE_FILES:
         return jsonify({
@@ -54,6 +53,7 @@ def load_sample(scenario):
     }
 
     last_results = results
+    last_metadata = metadata
 
     return jsonify({"results": results, "metadata": metadata})
 
@@ -61,7 +61,7 @@ def load_sample(scenario):
 @app.route("/upload", methods=["POST"])
 def upload():
     """Handle uploaded log file and analyze it, return JSON."""
-    global last_results
+    global last_results, last_metadata
 
     if "logfile" not in request.files:
         return jsonify({"error": "No file provided. Please select a .log file to upload."}), 400
@@ -91,6 +91,7 @@ def upload():
         }
 
         last_results = results
+        last_metadata = metadata
 
         return jsonify({"results": results, "metadata": metadata})
 
@@ -100,37 +101,29 @@ def upload():
         }), 400
 
 
-@app.route("/download-csv")
-def download_csv():
-    """Download the last analysis results as a CSV file."""
-    global last_results
+@app.route("/report")
+def report():
+    """Render a terminal-style incident report from last analysis."""
+    global last_results, last_metadata
 
     if last_results is None:
-        return "No analysis results available. Run an analysis first.", 404
+        return redirect(url_for("index"))
 
-    output = io.StringIO()
-    writer = csv.writer(output)
+    # Build enriched flagged_ips list with reputation for template
+    from detector import _get_ip_reputation
+    flagged_ips_list = []
+    for ip, detections in last_results.get("flagged_ips", {}).items():
+        flagged_ips_list.append({
+            "ip": ip,
+            "detections": detections,
+            "reputation": _get_ip_reputation(ip),
+        })
 
-    writer.writerow(["Type", "Source IP", "Count", "Timespan (seconds)", "Severity"])
-
-    for anomaly in last_results.get("anomalies", []):
-        writer.writerow([
-            anomaly.get("type", ""),
-            anomaly.get("src_ip", "N/A"),
-            anomaly.get("count", anomaly.get("unique_ports", anomaly.get("connection_count", ""))),
-            anomaly.get("timespan_seconds", ""),
-            anomaly.get("severity", ""),
-        ])
-
-    mem = io.BytesIO()
-    mem.write(output.getvalue().encode("utf-8"))
-    mem.seek(0)
-
-    return send_file(
-        mem,
-        mimetype="text/csv",
-        as_attachment=True,
-        download_name="anomaly_report.csv",
+    return render_template(
+        "report.html",
+        results=last_results,
+        metadata=last_metadata,
+        flagged_ips_list=flagged_ips_list,
     )
 
 

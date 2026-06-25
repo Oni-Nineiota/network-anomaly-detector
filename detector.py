@@ -63,6 +63,7 @@ def detect_brute_force(events):
             # Sliding window: find max count within any 60-second window
             best_count = 0
             best_timespan = 0.0
+            best_left = 0
             left = 0
 
             for right in range(len(port_conns)):
@@ -74,6 +75,7 @@ def detect_brute_force(events):
                 if window_count > best_count:
                     best_count = window_count
                     best_timespan = port_conns[right]["timestamp"] - port_conns[left]["timestamp"]
+                    best_left = left
 
             if best_count >= 10:
                 severity = "HIGH" if best_count >= 30 else "MEDIUM"
@@ -84,6 +86,7 @@ def detect_brute_force(events):
                     "timespan_seconds": round(best_timespan, 2),
                     "dest_port": port,
                     "severity": severity,
+                    "window_start": port_conns[best_left]["timestamp"],
                 })
 
     return results
@@ -108,6 +111,7 @@ def detect_port_scan(events):
         # Sliding window approach: expand right, track unique ports
         best_unique = 0
         best_timespan = 0.0
+        best_left = 0
         left = 0
 
         # For efficiency, use a counter for ports in the window
@@ -133,6 +137,7 @@ def detect_port_scan(events):
             if unique_in_window > best_unique:
                 best_unique = unique_in_window
                 best_timespan = conns[right]["timestamp"] - conns[left]["timestamp"]
+                best_left = left
 
         if best_unique >= 10:
             severity = "HIGH" if best_unique >= 20 else "MEDIUM"
@@ -142,6 +147,7 @@ def detect_port_scan(events):
                 "unique_ports": best_unique,
                 "timespan_seconds": round(best_timespan, 2),
                 "severity": severity,
+                "window_start": conns[best_left]["timestamp"],
             })
 
     return results

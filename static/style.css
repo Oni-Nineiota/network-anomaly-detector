@@ -467,6 +467,27 @@ body {
     background: #0a0a0a;
 }
 
+.heatmap-time-axis {
+    height: auto;
+    margin-top: 4px;
+}
+
+.heatmap-time-label {
+    height: auto;
+    background: transparent;
+    font-size: 9px;
+    color: var(--dim-green);
+    text-align: left;
+    overflow: visible;
+    white-space: nowrap;
+    position: relative;
+}
+
+.heatmap-time-empty {
+    height: 12px;
+    background: transparent;
+}
+
 .heatmap-cell.severity-low {
     background: var(--dim-green);
 }
