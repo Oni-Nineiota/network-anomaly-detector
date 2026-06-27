@@ -2,15 +2,51 @@
 
 from collections import defaultdict
 import math
+import os
+import json
+
+
+# === THREAT INTELLIGENCE ===
+
+_THREAT_INTEL_IPS = None
+
+
+def _load_threat_intel():
+    """Load known malicious IPs from threat_intel/known_bad_ips.txt."""
+    global _THREAT_INTEL_IPS
+    if _THREAT_INTEL_IPS is not None:
+        return _THREAT_INTEL_IPS
+
+    _THREAT_INTEL_IPS = set()
+    intel_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "threat_intel", "known_bad_ips.txt")
+
+    if not os.path.exists(intel_path):
+        return _THREAT_INTEL_IPS
+
+    with open(intel_path, "r") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            _THREAT_INTEL_IPS.add(line)
+
+    return _THREAT_INTEL_IPS
+
+
+def check_threat_intel(ip):
+    """Check if an IP is in the known malicious list. Returns True if malicious."""
+    intel = _load_threat_intel()
+    return ip in intel
 
 
 def parse_log(filepath):
     """Read a Zeek conn.log file and return a list of parsed event dicts.
 
-    Supports three formats:
-    1. Real Zeek with #fields header — dynamic field mapping
-    2. Synthetic format — 14 tab-separated fields, positional
-    3. Headerless real Zeek — 22 tab-separated fields, positional
+    Supports four formats:
+    1. JSON (one JSON object per line) — auto-detected if line starts with '{'
+    2. Real Zeek with #fields header — dynamic field mapping
+    3. Synthetic format — 14 tab-separated fields, positional
+    4. Headerless real Zeek — 22 tab-separated fields, positional
     """
     events = []
     field_positions = None  # Set if #fields header found
@@ -122,6 +158,33 @@ def parse_log(filepath):
             if not line:
                 continue
 
+            # JSON format: detect if line starts with '{'
+            if line.startswith("{"):
+                if detected_format is None:
+                    detected_format = "json"
+                if detected_format == "json":
+                    try:
+                        obj = json.loads(line)
+                        event = {
+                            "timestamp": float(obj.get("ts", 0)),
+                            "conn_id": str(obj.get("uid", "")),
+                            "src_ip": str(obj.get("id.orig_h", obj.get("id_orig_h", ""))),
+                            "src_port": int(obj.get("id.orig_p", obj.get("id_orig_p", 0))),
+                            "dest_ip": str(obj.get("id.resp_h", obj.get("id_resp_h", ""))),
+                            "dest_port": int(obj.get("id.resp_p", obj.get("id_resp_p", 0))),
+                            "protocol": str(obj.get("proto", "")),
+                            "service": str(obj.get("service", "")),
+                            "conn_state": str(obj.get("conn_state", "")),
+                            "duration": str(obj.get("duration", "")),
+                            "bytes_sent": int(obj.get("orig_bytes", obj.get("orig_ip_bytes", 0)) or 0),
+                            "bytes_received": int(obj.get("resp_bytes", obj.get("resp_ip_bytes", 0)) or 0),
+                        }
+                        if event["timestamp"] > 0:
+                            events.append(event)
+                    except (json.JSONDecodeError, ValueError, TypeError):
+                        pass
+                    continue
+
             # Handle comment/header lines
             if line.startswith("#"):
                 if line.startswith("#fields"):
@@ -214,6 +277,8 @@ def detect_brute_force(events):
                 severity = "HIGH" if best_count >= 30 else "MEDIUM"
                 results.append({
                     "type": "BRUTE_FORCE",
+                    "mitre_id": "T1110",
+                    "mitre_name": "Credential Access: Brute Force",
                     "src_ip": ip,
                     "count": best_count,
                     "timespan_seconds": round(best_timespan, 2),
@@ -276,6 +341,8 @@ def detect_port_scan(events):
             severity = "HIGH" if best_unique >= 20 else "MEDIUM"
             results.append({
                 "type": "PORT_SCAN",
+                "mitre_id": "T1046",
+                "mitre_name": "Discovery: Network Service Scanning",
                 "src_ip": ip,
                 "unique_ports": best_unique,
                 "timespan_seconds": round(best_timespan, 2),
@@ -326,6 +393,8 @@ def detect_traffic_spike(events):
             window_end = window_start + bucket_size
             results.append({
                 "type": "TRAFFIC_SPIKE",
+                "mitre_id": "T1498",
+                "mitre_name": "Impact: Network Denial of Service",
                 "window_start": round(window_start, 6),
                 "window_end": round(window_end, 6),
                 "connection_count": count,
@@ -333,6 +402,122 @@ def detect_traffic_spike(events):
                 "multiplier": round(multiplier, 2),
                 "severity": severity,
             })
+
+    return results
+
+
+def detect_slow_scan(events):
+    """Detect slow/stealthy port scans using a wider 30-minute sliding window.
+
+    Catches attackers who scan 1 port every 60+ seconds to evade short-window detection.
+    Threshold: 15+ unique ports from one IP within a 1800-second (30 min) window.
+    """
+    results = []
+
+    by_ip = defaultdict(list)
+    for e in events:
+        by_ip[e["src_ip"]].append(e)
+
+    for ip, conns in by_ip.items():
+        conns.sort(key=lambda x: x["timestamp"])
+
+        if len(conns) < 15:
+            continue
+
+        # Sliding window: 1800 seconds (30 minutes)
+        best_unique = 0
+        best_timespan = 0.0
+        best_left = 0
+        left = 0
+        port_count = defaultdict(int)
+        unique_in_window = 0
+
+        for right in range(len(conns)):
+            rport = conns[right]["dest_port"]
+            if port_count[rport] == 0:
+                unique_in_window += 1
+            port_count[rport] += 1
+
+            while conns[right]["timestamp"] - conns[left]["timestamp"] > 1800.0:
+                lport = conns[left]["dest_port"]
+                port_count[lport] -= 1
+                if port_count[lport] == 0:
+                    unique_in_window -= 1
+                    del port_count[lport]
+                left += 1
+
+            if unique_in_window > best_unique:
+                best_unique = unique_in_window
+                best_timespan = conns[right]["timestamp"] - conns[left]["timestamp"]
+                best_left = left
+
+        # Only flag if 15+ unique ports AND timespan > 120s (to avoid overlap with fast scan detector)
+        if best_unique >= 15 and best_timespan > 120.0:
+            severity = "HIGH" if best_unique >= 25 else "MEDIUM"
+            results.append({
+                "type": "SLOW_SCAN",
+                "mitre_id": "T1046",
+                "mitre_name": "Discovery: Network Service Scanning (Stealth)",
+                "src_ip": ip,
+                "unique_ports": best_unique,
+                "timespan_seconds": round(best_timespan, 2),
+                "severity": severity,
+                "window_start": conns[best_left]["timestamp"],
+            })
+
+    return results
+
+
+def detect_data_exfiltration(events):
+    """Detect data exfiltration by finding IPs with abnormally high outbound bytes.
+
+    Flags an IP if it sends more than 100KB total to a single destination,
+    AND the ratio of bytes_sent to bytes_received is > 10:1 (heavily asymmetric).
+    """
+    results = []
+
+    # Group by (src_ip, dest_ip) pair
+    pair_data = defaultdict(lambda: {"total_sent": 0, "total_recv": 0, "count": 0, "events": []})
+
+    for e in events:
+        key = (e["src_ip"], e["dest_ip"])
+        pair_data[key]["total_sent"] += e["bytes_sent"]
+        pair_data[key]["total_recv"] += e["bytes_received"]
+        pair_data[key]["count"] += 1
+        pair_data[key]["events"].append(e)
+
+    for (src_ip, dest_ip), data in pair_data.items():
+        total_sent = data["total_sent"]
+        total_recv = data["total_recv"]
+        count = data["count"]
+
+        # Threshold: >100KB sent, ratio > 10:1, at least 5 connections
+        if total_sent < 100000 or count < 5:
+            continue
+
+        ratio = total_sent / max(total_recv, 1)
+        if ratio < 10:
+            continue
+
+        # Get time range
+        timestamps = [e["timestamp"] for e in data["events"]]
+        timespan = max(timestamps) - min(timestamps)
+
+        severity = "HIGH" if total_sent > 500000 else "MEDIUM"
+        results.append({
+            "type": "DATA_EXFILTRATION",
+            "mitre_id": "T1048",
+            "mitre_name": "Exfiltration: Exfiltration Over Alternative Protocol",
+            "src_ip": src_ip,
+            "dest_ip": dest_ip,
+            "bytes_sent": total_sent,
+            "bytes_received": total_recv,
+            "ratio": round(ratio, 1),
+            "connection_count": count,
+            "timespan_seconds": round(timespan, 2),
+            "severity": severity,
+            "window_start": min(timestamps),
+        })
 
     return results
 
@@ -345,8 +530,12 @@ def calculate_threat_score(anomalies):
         ("BRUTE_FORCE", "MEDIUM"): 10,
         ("PORT_SCAN", "HIGH"): 15,
         ("PORT_SCAN", "MEDIUM"): 8,
+        ("SLOW_SCAN", "HIGH"): 12,
+        ("SLOW_SCAN", "MEDIUM"): 7,
         ("TRAFFIC_SPIKE", "HIGH"): 12,
         ("TRAFFIC_SPIKE", "MEDIUM"): 6,
+        ("DATA_EXFILTRATION", "HIGH"): 18,
+        ("DATA_EXFILTRATION", "MEDIUM"): 10,
     }
 
     score = 0
@@ -449,9 +638,11 @@ def analyze_file(filepath):
     # Run all detectors
     brute_force = detect_brute_force(events)
     port_scan = detect_port_scan(events)
+    slow_scan = detect_slow_scan(events)
     traffic_spike = detect_traffic_spike(events)
+    data_exfil = detect_data_exfiltration(events)
 
-    anomalies = brute_force + port_scan + traffic_spike
+    anomalies = brute_force + port_scan + slow_scan + traffic_spike + data_exfil
 
     threat_score = calculate_threat_score(anomalies)
     flagged_ips = get_flagged_ips(anomalies)
@@ -485,6 +676,16 @@ def analyze_file(filepath):
         all_lines = f.readlines()
         raw_lines = [line.strip() for line in all_lines[-20:]]
 
+    # Threat intelligence check — flag IPs on known blocklists
+    threat_intel_hits = []
+    checked_ips = set()
+    for e in events:
+        for ip in (e["src_ip"], e["dest_ip"]):
+            if ip and ip not in checked_ips:
+                checked_ips.add(ip)
+                if check_threat_intel(ip):
+                    threat_intel_hits.append(ip)
+
     return {
         "total_events": len(events),
         "anomalies": anomalies,
@@ -495,6 +696,7 @@ def analyze_file(filepath):
         "protocol_breakdown": protocol_breakdown,
         "connection_states": connection_states,
         "top_talkers": top_talkers,
+        "threat_intel_hits": threat_intel_hits,
     }
 
 

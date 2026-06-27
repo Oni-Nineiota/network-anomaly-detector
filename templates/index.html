@@ -43,6 +43,12 @@
                 <a href="#" class="btn" data-scenario="normal_traffic">NORMAL TRAFFIC</a>
                 <a href="#" class="btn" data-scenario="combined_attack">COMBINED ATTACK</a>
             </div>
+            <div class="button-row">
+                <a href="#" class="btn" data-scenario="ddos_flood">DDoS FLOOD</a>
+                <a href="#" class="btn" data-scenario="slow_scan">SLOW SCAN</a>
+                <a href="#" class="btn" data-scenario="data_exfiltration">DATA EXFILTRATION</a>
+                <a href="#" class="btn" data-scenario="multi_attacker">MULTI-ATTACKER</a>
+            </div>
         </div>
 
         <div class="input-divider">
@@ -96,6 +102,11 @@
             <div class="flagged-ips" id="flaggedIps"></div>
         </div>
 
+        <!-- Layer 4b: Threat Intel Hits -->
+        <div class="result-layer" id="layer4b">
+            <div class="threat-intel-box" id="threatIntelBox"></div>
+        </div>
+
         <!-- Layer 5: Timeline Chart -->
         <div class="result-layer" id="layer5">
             <div class="section-header">TRAFFIC TIMELINE</div>
@@ -113,6 +124,9 @@
         <!-- Layer 7: Anomaly Table -->
         <div class="result-layer" id="layer7">
             <div class="section-header">DETECTED ANOMALIES</div>
+            <div class="filter-bar">
+                <input type="text" id="filterInput" class="filter-input" placeholder="FILTER: type an IP, port, severity, or attack type...">
+            </div>
             <div id="anomalyTableContainer"></div>
         </div>
 
@@ -361,6 +375,7 @@ function attachAnalyzeAnotherBtn() {
         for (var i = 1; i <= 9; i++) {
             document.getElementById('layer' + i).classList.remove('revealed');
         }
+        document.getElementById('layer4b').classList.remove('revealed');
         // Hide full log modal if open
         document.getElementById('fullLogModal').style.display = 'none';
         // Reset file input
@@ -468,6 +483,7 @@ function runAnalysis(url, fetchOptions, isFileUpload) {
     for (var i = 1; i <= 9; i++) {
         document.getElementById('layer' + i).classList.remove('revealed');
     }
+    document.getElementById('layer4b').classList.remove('revealed');
 
     var fetchOpts = fetchOptions || {};
     var fetchPromise = fetch(url, fetchOpts).then(function(resp) {
@@ -571,23 +587,27 @@ function renderResults(results, metadata) {
     const score = results.threat_score;
     let scoreClass = '';
     let gaugeLevel = 'level-low';
-    if (score >= 70) { scoreClass = 'score-red'; gaugeLevel = 'level-high'; }
-    else if (score >= 30) { scoreClass = 'score-yellow'; gaugeLevel = 'level-medium'; }
+    let gaugeColor = '#00ff41';
+    if (score >= 70) { scoreClass = 'score-red'; gaugeLevel = 'level-high'; gaugeColor = '#ff3333'; }
+    else if (score >= 30) { scoreClass = 'score-yellow'; gaugeLevel = 'level-medium'; gaugeColor = '#ffdd00'; }
 
-    // Gauge rotation: 0 = -90deg, 100 = +90deg. Map score to rotation.
-    const gaugeRotation = -90 + (score / 100) * 180;
+    // SVG circle gauge: circumference = 2 * PI * radius (radius=32)
+    var circumference = 2 * Math.PI * 32;
+    var dashOffset = circumference - (score / 100) * circumference;
 
     document.getElementById('summaryCards').innerHTML =
         '<div class="card"><div class="card-label">[■] TOTAL EVENTS</div><div class="card-value">' + results.total_events + '</div></div>' +
         '<div class="card"><div class="card-label">[!] ANOMALIES FOUND</div><div class="card-value">' + results.anomalies.length + '</div></div>' +
         '<div class="card ' + scoreClass + '">' +
             '<div class="threat-gauge-wrapper">' +
+                '<div class="threat-gauge-sublabel">THREAT SCORE</div>' +
                 '<div class="threat-gauge">' +
-                    '<div class="threat-gauge-bg"></div>' +
-                    '<div class="threat-gauge-fill ' + gaugeLevel + '" style="transform: rotate(' + gaugeRotation + 'deg);"></div>' +
+                    '<svg viewBox="0 0 80 80">' +
+                        '<circle class="threat-gauge-track" cx="40" cy="40" r="32"></circle>' +
+                        '<circle class="threat-gauge-fill-circle" cx="40" cy="40" r="32" stroke="' + gaugeColor + '" stroke-dasharray="' + circumference + '" stroke-dashoffset="' + dashOffset + '"></circle>' +
+                    '</svg>' +
                     '<div class="threat-gauge-label ' + gaugeLevel + '">' + score + '</div>' +
                 '</div>' +
-                '<div class="threat-gauge-sublabel">THREAT SCORE</div>' +
             '</div>' +
         '</div>' +
         '<div class="card"><div class="card-label">[◆] IPs FLAGGED</div><div class="card-value">' + Object.keys(results.flagged_ips).length + '</div></div>';
@@ -631,6 +651,20 @@ function renderResults(results, metadata) {
         flaggedEl.innerHTML = html;
     } else {
         flaggedEl.innerHTML = '';
+    }
+
+    // Layer 4b: Threat Intel Hits
+    const threatIntelBox = document.getElementById('threatIntelBox');
+    const threatHits = results.threat_intel_hits || [];
+    if (threatHits.length > 0) {
+        let tiHtml = '<div class="section-header">&gt; THREAT INTELLIGENCE MATCHES</div>';
+        tiHtml += '<div class="threat-intel-warning">[!] ' + threatHits.length + ' IP(s) found in known malicious blocklists</div>';
+        for (const ip of threatHits) {
+            tiHtml += '<div class="threat-intel-ip">&gt;&gt; ' + ip + ' — <span class="threat-intel-tag">KNOWN MALICIOUS</span></div>';
+        }
+        threatIntelBox.innerHTML = tiHtml;
+    } else {
+        threatIntelBox.innerHTML = '<div class="section-header">&gt; THREAT INTELLIGENCE</div><div class="threat-intel-clear">[OK] No known malicious IPs detected — checked against 200+ blocklisted addresses</div>';
     }
 
     // Layer 5: Timeline Chart
@@ -692,12 +726,13 @@ function renderResults(results, metadata) {
     document.getElementById('rawLog').textContent = results.raw_lines.join('\n');
 
     // Reveal layers with stagger + smooth scroll
-    for (let i = 1; i <= 9; i++) {
-        (function(idx) {
+    var allLayers = ['layer1','layer2','layer3','layer4','layer4b','layer5','layer6','layer7','layer8','layer9'];
+    for (let i = 0; i < allLayers.length; i++) {
+        (function(idx, layerId) {
             setTimeout(function() {
-                document.getElementById('layer' + idx).classList.add('revealed');
-            }, idx * 150);
-        })(i);
+                document.getElementById(layerId).classList.add('revealed');
+            }, (idx + 1) * 150);
+        })(i, allLayers[i]);
     }
 
     // Smooth scroll to results
@@ -711,7 +746,7 @@ function renderResults(results, metadata) {
 // ===========================
 function buildHeatmap(results) {
     const container = document.getElementById('heatmapContainer');
-    const types = ['BRUTE_FORCE', 'PORT_SCAN', 'TRAFFIC_SPIKE'];
+    const types = ['BRUTE_FORCE', 'PORT_SCAN', 'SLOW_SCAN', 'TRAFFIC_SPIKE', 'DATA_EXFILTRATION'];
     const timeline = results.timeline_data;
     const numBuckets = Math.min(timeline.length, 80); // Cap columns for readability
     const bucketSize = Math.max(1, Math.floor(timeline.length / numBuckets));
@@ -853,8 +888,14 @@ function buildRecommendations(results) {
         if (types.has('PORT_SCAN')) {
             content += '    > REVIEW firewall rules \u2014 consider blocking ICMP and closing unused ports\n';
         }
+        if (types.has('SLOW_SCAN')) {
+            content += '    > DEPLOY long-window IDS rules \u2014 attacker using stealth timing to evade detection\n';
+        }
         if (types.has('TRAFFIC_SPIKE')) {
             content += '    > INVESTIGATE traffic source \u2014 possible DDoS or data exfiltration attempt\n';
+        }
+        if (types.has('DATA_EXFILTRATION')) {
+            content += '    > INVESTIGATE outbound data flow \u2014 asymmetric transfer detected, possible data theft\n';
         }
     }
 
@@ -886,25 +927,42 @@ function buildAnomalyTable(results) {
         return;
     }
 
-    let html = '<table class="anomaly-table"><thead><tr><th>TYPE</th><th>SOURCE IP</th><th>COUNT</th><th>TIMESPAN</th><th>SEVERITY</th></tr></thead><tbody>';
+    let html = '<table class="anomaly-table"><thead><tr><th>TYPE</th><th>MITRE ATT&CK</th><th>SOURCE IP</th><th>COUNT</th><th>TIMESPAN</th><th>SEVERITY</th></tr></thead><tbody>';
 
     anomalies.forEach(function(a) {
         const srcIp = a.src_ip || 'N/A';
         const count = a.count || a.unique_ports || a.connection_count || '';
         const timespan = a.timespan_seconds !== undefined ? a.timespan_seconds + 's' : '';
+        const mitre = a.mitre_id ? '<span class="mitre-tag">' + a.mitre_id + '</span>' : '';
         let sevClass = '';
         if (a.severity === 'HIGH') sevClass = 'severity-high';
         else if (a.severity === 'MEDIUM') sevClass = 'severity-medium';
         else sevClass = 'severity-low';
 
-        html += '<tr><td>' + a.type + '</td><td>' + srcIp + '</td><td>' + count + '</td><td>' + timespan + '</td><td class="' + sevClass + '">' + a.severity + '</td></tr>';
+        html += '<tr><td>' + a.type + '</td><td>' + mitre + '</td><td>' + srcIp + '</td><td>' + count + '</td><td>' + timespan + '</td><td class="' + sevClass + '">' + a.severity + '</td></tr>';
     });
 
     html += '</tbody></table>';
-    html += '<a href="/report" target="_blank" class="btn" style="margin-top: 12px; display: block; width: 100%; box-sizing: border-box; text-align: center;">VIEW REPORT</a>';
+    html += '<div class="export-row">';
+    html += '<a href="/report" target="_blank" class="btn">VIEW REPORT</a>';
+    html += '<a href="/export/csv" class="btn btn-export">EXPORT CSV</a>';
+    html += '<a href="/export/json" class="btn btn-export">EXPORT JSON</a>';
+    html += '</div>';
 
     container.innerHTML = html;
 }
+
+// ===========================
+// FILTER BAR — live filter on anomaly table
+// ===========================
+document.getElementById('filterInput').addEventListener('input', function() {
+    var query = this.value.toLowerCase().trim();
+    var rows = document.querySelectorAll('.anomaly-table tbody tr');
+    rows.forEach(function(row) {
+        var text = row.textContent.toLowerCase();
+        row.style.display = text.includes(query) ? '' : 'none';
+    });
+});
 
 </script>
 </body>

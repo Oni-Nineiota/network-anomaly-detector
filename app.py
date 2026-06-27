@@ -1,8 +1,11 @@
 """Flask web application for the Network Anomaly Detector."""
 
-from flask import Flask, request, render_template, jsonify, redirect, url_for
+from flask import Flask, request, render_template, jsonify, redirect, url_for, Response
 import time
 import os
+import json
+import io
+import csv
 from datetime import datetime
 
 from detector import analyze_file
@@ -19,6 +22,10 @@ SAMPLE_FILES = {
     "port_scan": "sample_logs/port_scan.log",
     "normal_traffic": "sample_logs/normal_traffic.log",
     "combined_attack": "sample_logs/combined_attack.log",
+    "ddos_flood": "sample_logs/ddos_flood.log",
+    "slow_scan": "sample_logs/slow_scan.log",
+    "data_exfiltration": "sample_logs/data_exfiltration.log",
+    "multi_attacker": "sample_logs/multi_attacker.log",
 }
 
 
@@ -99,6 +106,99 @@ def upload():
         return jsonify({
             "error": "Could not parse file — make sure it is a valid Zeek conn.log file."
         }), 400
+
+
+@app.route("/export/csv")
+def export_csv():
+    """Export analysis results as a downloadable CSV file."""
+    global last_results, last_metadata
+
+    if last_results is None:
+        return jsonify({"error": "No analysis to export. Run an analysis first."}), 400
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    # Header
+    writer.writerow([
+        "TYPE", "MITRE_ID", "MITRE_NAME", "SOURCE_IP", "SEVERITY",
+        "COUNT", "UNIQUE_PORTS", "TIMESPAN_SECONDS", "MULTIPLIER",
+        "BYTES_SENT", "DEST_IP"
+    ])
+
+    # Anomaly rows
+    for a in last_results.get("anomalies", []):
+        writer.writerow([
+            a.get("type", ""),
+            a.get("mitre_id", ""),
+            a.get("mitre_name", ""),
+            a.get("src_ip", ""),
+            a.get("severity", ""),
+            a.get("count", a.get("connection_count", "")),
+            a.get("unique_ports", ""),
+            a.get("timespan_seconds", ""),
+            a.get("multiplier", ""),
+            a.get("bytes_sent", ""),
+            a.get("dest_ip", ""),
+        ])
+
+    # Add summary section
+    writer.writerow([])
+    writer.writerow(["SUMMARY"])
+    writer.writerow(["Total Events", last_results.get("total_events", 0)])
+    writer.writerow(["Threat Score", last_results.get("threat_score", 0)])
+    writer.writerow(["Anomalies Found", len(last_results.get("anomalies", []))])
+    writer.writerow(["File", last_metadata.get("filename", "") if last_metadata else ""])
+    writer.writerow(["Analyzed At", last_metadata.get("analyzed_at", "") if last_metadata else ""])
+
+    # Threat intel hits
+    threat_hits = last_results.get("threat_intel_hits", [])
+    if threat_hits:
+        writer.writerow([])
+        writer.writerow(["THREAT INTELLIGENCE HITS"])
+        for ip in threat_hits:
+            writer.writerow([ip, "KNOWN MALICIOUS"])
+
+    content = output.getvalue()
+    filename = "anomaly_report.csv"
+
+    return Response(
+        content,
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+
+@app.route("/export/json")
+def export_json():
+    """Export full analysis results as a downloadable JSON file."""
+    global last_results, last_metadata
+
+    if last_results is None:
+        return jsonify({"error": "No analysis to export. Run an analysis first."}), 400
+
+    export_data = {
+        "metadata": last_metadata,
+        "results": {
+            "total_events": last_results.get("total_events", 0),
+            "threat_score": last_results.get("threat_score", 0),
+            "anomalies": last_results.get("anomalies", []),
+            "flagged_ips": last_results.get("flagged_ips", {}),
+            "threat_intel_hits": last_results.get("threat_intel_hits", []),
+            "protocol_breakdown": last_results.get("protocol_breakdown", {}),
+            "connection_states": last_results.get("connection_states", {}),
+            "top_talkers": last_results.get("top_talkers", []),
+        }
+    }
+
+    content = json.dumps(export_data, indent=2)
+    filename = "anomaly_report.json"
+
+    return Response(
+        content,
+        mimetype="application/json",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
 
 
 @app.route("/full-log")
