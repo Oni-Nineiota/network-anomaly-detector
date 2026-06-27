@@ -31,25 +31,34 @@
         <p>USAGE: Select a sample scenario or upload your own Zeek conn.log file. Supported format: standard Zeek conn.log tab-separated (14 fields per line). Analysis results appear below. Use DOWNLOAD REPORT to export findings as CSV.</p>
     </div>
 
-    <!-- SAMPLE BUTTONS -->
-    <div class="section">
-        <div class="section-header">&gt; SELECT SCENARIO</div>
-        <div class="button-row">
-            <a href="#" class="btn" data-scenario="brute_force">BRUTE FORCE</a>
-            <a href="#" class="btn" data-scenario="port_scan">PORT SCAN</a>
-            <a href="#" class="btn" data-scenario="normal_traffic">NORMAL TRAFFIC</a>
-            <a href="#" class="btn" data-scenario="combined_attack">COMBINED ATTACK</a>
-        </div>
-    </div>
+    <!-- INPUT SECTION — scenarios + upload merged in one block -->
+    <div class="section" id="inputSection">
+        <div class="section-header">&gt; LOAD LOG FILE</div>
 
-    <!-- UPLOAD SECTION -->
-    <div class="section">
-        <div class="section-header">&gt; UPLOAD LOG FILE</div>
-        <div class="upload-zone" id="uploadZone">
-            <span id="uploadLabel">DROP ZEEK .LOG FILE HERE OR CLICK TO BROWSE</span>
-            <input type="file" id="fileInput" accept=".log">
+        <div class="input-subsection">
+            <div class="subsection-label">SAMPLE SCENARIOS</div>
+            <div class="button-row">
+                <a href="#" class="btn" data-scenario="brute_force">BRUTE FORCE</a>
+                <a href="#" class="btn" data-scenario="port_scan">PORT SCAN</a>
+                <a href="#" class="btn" data-scenario="normal_traffic">NORMAL TRAFFIC</a>
+                <a href="#" class="btn" data-scenario="combined_attack">COMBINED ATTACK</a>
+            </div>
         </div>
-        <button class="btn" id="analyzeBtn">ANALYZE FILE</button>
+
+        <div class="input-divider">
+            <span class="input-divider-text">OR</span>
+        </div>
+
+        <div class="input-subsection">
+            <div class="subsection-label">UPLOAD YOUR OWN</div>
+            <div class="upload-zone" id="uploadZone">
+                <span id="uploadLabel">DROP ZEEK .LOG FILE HERE OR CLICK TO BROWSE</span>
+                <input type="file" id="fileInput" accept=".log">
+            </div>
+            <div class="analyze-btn-wrapper" id="analyzeBtnWrapper">
+                <button class="btn btn-full" id="analyzeBtn">ANALYZE FILE</button>
+            </div>
+        </div>
     </div>
 
     <!-- LOADING -->
@@ -117,7 +126,25 @@
         <div class="result-layer" id="layer9">
             <div class="section-header">RAW LOG PREVIEW &mdash; LAST 20 LINES</div>
             <pre class="raw-log" id="rawLog"></pre>
+            <button class="btn" id="viewFullLogBtn" style="margin-top: 12px; width: 100%; text-align: center;">VIEW FULL LOG</button>
         </div>
+
+        <!-- Full Log Modal -->
+        <div id="fullLogModal" class="full-log-modal" style="display: none;">
+            <div class="full-log-modal-content">
+                <div class="full-log-modal-header">
+                    <span class="section-header" style="margin-bottom: 0; border-bottom: none;">FULL LOG &mdash; <span id="fullLogFilename"></span></span>
+                    <button class="btn" id="closeFullLogBtn">CLOSE</button>
+                </div>
+                <pre class="raw-log full-log-body" id="fullLogContent">Loading...</pre>
+            </div>
+        </div>
+    </div>
+
+    <!-- FOOTER -->
+    <div class="footer">
+        <div class="footer-line footer-version">NETWORK ANOMALY DETECTOR v1.0</div>
+        <div class="footer-line">ZEEK LOG ANALYSIS ENGINE &mdash; ALGORITHMIC THREAT DETECTION</div>
     </div>
 
 </div>
@@ -296,23 +323,90 @@ document.querySelectorAll('[data-scenario]').forEach(function(btn) {
     btn.addEventListener('click', function(e) {
         e.preventDefault();
         const scenario = this.getAttribute('data-scenario');
-        runAnalysis('/load-sample/' + scenario);
+        runAnalysis('/load-sample/' + scenario, {}, false);
     });
 });
 
 // ===========================
-// ANALYZE BUTTON
+// ANALYZE BUTTON — with inline progress bar (file upload only)
 // ===========================
-document.getElementById('analyzeBtn').addEventListener('click', function(e) {
+function attachAnalyzeBtn() {
+    var btn = document.getElementById('analyzeBtn');
+    if (!btn) return;
+    btn.addEventListener('click', function(e) {
+        e.preventDefault();
+        var input = document.getElementById('fileInput');
+        if (!input.files || input.files.length === 0) {
+            showError('No file selected. Please choose a .log file to upload.');
+            return;
+        }
+        var formData = new FormData();
+        formData.append('logfile', input.files[0]);
+        runAnalysis('/upload', {method: 'POST', body: formData}, true);
+    });
+}
+attachAnalyzeBtn();
+
+// ===========================
+// ANALYZE ANOTHER FILE — replaces button in same spot
+// ===========================
+function attachAnalyzeAnotherBtn() {
+    var btn = document.getElementById('analyzeAnotherBtn');
+    if (!btn) return;
+    btn.addEventListener('click', function(e) {
+        e.preventDefault();
+        // Hide results
+        document.getElementById('resultsSection').classList.remove('visible');
+        // Reset layers
+        for (var i = 1; i <= 9; i++) {
+            document.getElementById('layer' + i).classList.remove('revealed');
+        }
+        // Hide full log modal if open
+        document.getElementById('fullLogModal').style.display = 'none';
+        // Reset file input
+        document.getElementById('fileInput').value = '';
+        document.getElementById('uploadLabel').textContent = 'DROP ZEEK .LOG FILE HERE OR CLICK TO BROWSE';
+        document.getElementById('uploadZone').classList.remove('has-file');
+        // Hide error
+        document.getElementById('errorSection').classList.remove('visible');
+        // Destroy chart
+        if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
+        // Restore analyze button
+        document.getElementById('analyzeBtnWrapper').innerHTML = '<button class="btn btn-full" id="analyzeBtn">ANALYZE FILE</button>';
+        attachAnalyzeBtn();
+        // Scroll to top
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+}
+
+// ===========================
+// VIEW FULL LOG — modal
+// ===========================
+document.getElementById('viewFullLogBtn').addEventListener('click', function(e) {
     e.preventDefault();
-    const input = document.getElementById('fileInput');
-    if (!input.files || input.files.length === 0) {
-        showError('No file selected. Please choose a .log file to upload.');
-        return;
-    }
-    const formData = new FormData();
-    formData.append('logfile', input.files[0]);
-    runAnalysis('/upload', {method: 'POST', body: formData});
+    var modal = document.getElementById('fullLogModal');
+    var content = document.getElementById('fullLogContent');
+    var filename = document.getElementById('fullLogFilename');
+    content.textContent = 'Loading...';
+    modal.style.display = 'flex';
+
+    fetch('/full-log').then(function(resp) {
+        return resp.json();
+    }).then(function(data) {
+        if (data.error) {
+            content.textContent = '> ERROR: ' + data.error;
+        } else {
+            filename.textContent = data.filename;
+            content.textContent = data.content;
+        }
+    }).catch(function() {
+        content.textContent = '> ERROR: Could not load log file.';
+    });
+});
+
+document.getElementById('closeFullLogBtn').addEventListener('click', function(e) {
+    e.preventDefault();
+    document.getElementById('fullLogModal').style.display = 'none';
 });
 
 // ===========================
@@ -363,33 +457,88 @@ function runLoadingAnimation() {
 // ===========================
 let chartInstance = null;
 
-function runAnalysis(url, fetchOptions) {
+function runAnalysis(url, fetchOptions, isFileUpload) {
     // Hide previous results and errors
     document.getElementById('resultsSection').classList.remove('visible');
     document.getElementById('errorSection').classList.remove('visible');
 
+    var wrapper = document.getElementById('analyzeBtnWrapper');
+
     // Reset layer animations
-    for (let i = 1; i <= 9; i++) {
+    for (var i = 1; i <= 9; i++) {
         document.getElementById('layer' + i).classList.remove('revealed');
     }
 
-    const fetchOpts = fetchOptions || {};
-    const fetchPromise = fetch(url, fetchOpts).then(function(resp) {
+    var fetchOpts = fetchOptions || {};
+    var fetchPromise = fetch(url, fetchOpts).then(function(resp) {
         return resp.json();
     });
 
-    const animPromise = runLoadingAnimation();
+    // FILE UPLOAD: show inline progress bar only (no big loading animation)
+    // SAMPLE SCENARIO: show big loading animation only (no inline bar)
+    if (isFileUpload) {
+        wrapper.innerHTML = '<div class="inline-progress"><div class="progress-bar-container"><div class="progress-bar-fill" id="inlineProgressBar" style="width: 0%;"></div></div><div class="inline-progress-label" id="inlineProgressLabel">&gt; UPLOADING FILE...</div></div>';
 
-    Promise.all([fetchPromise, animPromise]).then(function(values) {
-        const data = values[0];
-        if (data.error) {
-            showError(data.error);
-        } else {
-            renderResults(data.results, data.metadata);
-        }
-    }).catch(function(err) {
-        showError('Network error — could not reach the server.');
-    });
+        var inlineBar = document.getElementById('inlineProgressBar');
+        var inlineLabel = document.getElementById('inlineProgressLabel');
+        var inlineProgress = 0;
+        var inlineInterval = setInterval(function() {
+            inlineProgress = Math.min(inlineProgress + 5, 90);
+            if (inlineBar) inlineBar.style.width = inlineProgress + '%';
+            // Update label at stages
+            if (inlineProgress > 30 && inlineProgress <= 60 && inlineLabel) inlineLabel.textContent = '> PROCESSING...';
+            if (inlineProgress > 60 && inlineLabel) inlineLabel.textContent = '> ANALYZING...';
+        }, 150);
+
+        fetchPromise.then(function(data) {
+            clearInterval(inlineInterval);
+            if (inlineBar) inlineBar.style.width = '100%';
+            if (inlineLabel) inlineLabel.textContent = '> COMPLETE.';
+
+            setTimeout(function() {
+                wrapper.innerHTML = '<button class="btn btn-reset btn-full" id="analyzeAnotherBtn">&gt; ANALYZE ANOTHER FILE</button>';
+                attachAnalyzeAnotherBtn();
+
+                if (data.error) {
+                    showError(data.error);
+                    wrapper.innerHTML = '<button class="btn btn-full" id="analyzeBtn">ANALYZE FILE</button>';
+                    attachAnalyzeBtn();
+                } else {
+                    renderResults(data.results, data.metadata);
+                }
+            }, 400);
+        }).catch(function(err) {
+            clearInterval(inlineInterval);
+            wrapper.innerHTML = '<button class="btn btn-full" id="analyzeBtn">ANALYZE FILE</button>';
+            attachAnalyzeBtn();
+            showError('Network error — could not reach the server.');
+        });
+
+    } else {
+        // Sample scenario: use the big loading animation, no inline bar
+        var animPromise = runLoadingAnimation();
+
+        Promise.all([fetchPromise, animPromise]).then(function(values) {
+            var data = values[0];
+
+            setTimeout(function() {
+                wrapper.innerHTML = '<button class="btn btn-reset btn-full" id="analyzeAnotherBtn">&gt; ANALYZE ANOTHER FILE</button>';
+                attachAnalyzeAnotherBtn();
+            }, 100);
+
+            if (data.error) {
+                showError(data.error);
+                wrapper.innerHTML = '<button class="btn btn-full" id="analyzeBtn">ANALYZE FILE</button>';
+                attachAnalyzeBtn();
+            } else {
+                renderResults(data.results, data.metadata);
+            }
+        }).catch(function(err) {
+            wrapper.innerHTML = '<button class="btn btn-full" id="analyzeBtn">ANALYZE FILE</button>';
+            attachAnalyzeBtn();
+            showError('Network error — could not reach the server.');
+        });
+    }
 }
 
 // ===========================
@@ -418,17 +567,30 @@ function renderResults(results, metadata) {
         ' | ANALYZED: ' + metadata.analyzed_at +
         ' | PROCESSED IN: ' + metadata.processing_time_ms + 'ms';
 
-    // Layer 2: Summary Cards
+    // Layer 2: Summary Cards with icons + threat gauge
     const score = results.threat_score;
     let scoreClass = '';
-    if (score >= 70) scoreClass = 'score-red';
-    else if (score >= 30) scoreClass = 'score-yellow';
+    let gaugeLevel = 'level-low';
+    if (score >= 70) { scoreClass = 'score-red'; gaugeLevel = 'level-high'; }
+    else if (score >= 30) { scoreClass = 'score-yellow'; gaugeLevel = 'level-medium'; }
+
+    // Gauge rotation: 0 = -90deg, 100 = +90deg. Map score to rotation.
+    const gaugeRotation = -90 + (score / 100) * 180;
 
     document.getElementById('summaryCards').innerHTML =
-        '<div class="card"><div class="card-label">TOTAL EVENTS</div><div class="card-value">' + results.total_events + '</div></div>' +
-        '<div class="card"><div class="card-label">ANOMALIES FOUND</div><div class="card-value">' + results.anomalies.length + '</div></div>' +
-        '<div class="card ' + scoreClass + '"><div class="card-label">THREAT SCORE</div><div class="card-value">' + score + '/100</div></div>' +
-        '<div class="card"><div class="card-label">IPs FLAGGED</div><div class="card-value">' + Object.keys(results.flagged_ips).length + '</div></div>';
+        '<div class="card"><div class="card-label">[■] TOTAL EVENTS</div><div class="card-value">' + results.total_events + '</div></div>' +
+        '<div class="card"><div class="card-label">[!] ANOMALIES FOUND</div><div class="card-value">' + results.anomalies.length + '</div></div>' +
+        '<div class="card ' + scoreClass + '">' +
+            '<div class="threat-gauge-wrapper">' +
+                '<div class="threat-gauge">' +
+                    '<div class="threat-gauge-bg"></div>' +
+                    '<div class="threat-gauge-fill ' + gaugeLevel + '" style="transform: rotate(' + gaugeRotation + 'deg);"></div>' +
+                    '<div class="threat-gauge-label ' + gaugeLevel + '">' + score + '</div>' +
+                '</div>' +
+                '<div class="threat-gauge-sublabel">THREAT SCORE</div>' +
+            '</div>' +
+        '</div>' +
+        '<div class="card"><div class="card-label">[◆] IPs FLAGGED</div><div class="card-value">' + Object.keys(results.flagged_ips).length + '</div></div>';
 
     // Layer 3: Stat Panels
     let panelA = '<div class="stat-panel"><div class="panel-header">PROTOCOL BREAKDOWN</div>';
@@ -529,7 +691,7 @@ function renderResults(results, metadata) {
     // Layer 9: Raw Log
     document.getElementById('rawLog').textContent = results.raw_lines.join('\n');
 
-    // Reveal layers with stagger
+    // Reveal layers with stagger + smooth scroll
     for (let i = 1; i <= 9; i++) {
         (function(idx) {
             setTimeout(function() {
@@ -537,6 +699,11 @@ function renderResults(results, metadata) {
             }, idx * 150);
         })(i);
     }
+
+    // Smooth scroll to results
+    setTimeout(function() {
+        document.getElementById('resultsSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 200);
 }
 
 // ===========================
@@ -585,10 +752,11 @@ function buildHeatmap(results) {
         for (let i = 0; i < numBuckets; i++) {
             const sev = anomalyMap[type][i];
             let cls = '';
-            if (sev === 'HIGH') cls = ' severity-high';
-            else if (sev === 'MEDIUM') cls = ' severity-medium';
-            else if (sev === 'LOW') cls = ' severity-low';
-            html += '<div class="heatmap-cell' + cls + '"></div>';
+            let tooltip = '';
+            if (sev === 'HIGH') { cls = ' severity-high'; tooltip = ' data-tooltip="' + type + ' — HIGH severity @ ' + timeLabels[i] + '"'; }
+            else if (sev === 'MEDIUM') { cls = ' severity-medium'; tooltip = ' data-tooltip="' + type + ' — MEDIUM severity @ ' + timeLabels[i] + '"'; }
+            else if (sev === 'LOW') { cls = ' severity-low'; tooltip = ' data-tooltip="' + type + ' — LOW severity @ ' + timeLabels[i] + '"'; }
+            html += '<div class="heatmap-cell' + cls + '"' + tooltip + '></div>';
         }
         html += '</div></div>';
     });

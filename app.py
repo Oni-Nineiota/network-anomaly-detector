@@ -101,6 +101,35 @@ def upload():
         }), 400
 
 
+@app.route("/full-log")
+def full_log():
+    """Return the full content of the last analyzed log file."""
+    global last_metadata
+
+    if last_metadata is None:
+        return jsonify({"error": "No file has been analyzed yet."}), 400
+
+    filename = last_metadata.get("filename", "")
+
+    # Check if it's a sample file
+    for scenario, filepath in SAMPLE_FILES.items():
+        if os.path.basename(filepath) == filename:
+            try:
+                with open(filepath, "r") as f:
+                    content = f.read()
+                return jsonify({"filename": filename, "content": content})
+            except FileNotFoundError:
+                return jsonify({"error": "Log file not found."}), 404
+
+    # Otherwise check uploaded file
+    if os.path.exists("uploaded.log"):
+        with open("uploaded.log", "r") as f:
+            content = f.read()
+        return jsonify({"filename": filename, "content": content})
+
+    return jsonify({"error": "Log file not found."}), 404
+
+
 @app.route("/report")
 def report():
     """Render a terminal-style incident report from last analysis."""
