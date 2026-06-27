@@ -5,34 +5,167 @@ import math
 
 
 def parse_log(filepath):
-    """Read a Zeek conn.log file and return a list of parsed event dicts."""
+    """Read a Zeek conn.log file and return a list of parsed event dicts.
+
+    Supports three formats:
+    1. Real Zeek with #fields header — dynamic field mapping
+    2. Synthetic format — 14 tab-separated fields, positional
+    3. Headerless real Zeek — 22 tab-separated fields, positional
+    """
     events = []
+    field_positions = None  # Set if #fields header found
+    detected_format = None  # "synthetic_14", "zeek_22", or "zeek_header"
+
+    # Zeek field names we care about mapped to our internal keys
+    zeek_field_map = {
+        "ts": "timestamp",
+        "uid": "conn_id",
+        "id.orig_h": "src_ip",
+        "id.orig_p": "src_port",
+        "id.resp_h": "dest_ip",
+        "id.resp_p": "dest_port",
+        "proto": "protocol",
+        "service": "service",
+        "conn_state": "conn_state",
+        "duration": "duration",
+        "orig_bytes": "bytes_sent",
+        "resp_bytes": "bytes_received",
+    }
+
+    def _safe_int(val):
+        """Convert string to int, treating '-' and empty as 0."""
+        if val == "-" or val == "" or val == "(empty)":
+            return 0
+        return int(val)
+
+    def _safe_float(val):
+        """Convert string to float, treating '-' and empty as 0.0."""
+        if val == "-" or val == "" or val == "(empty)":
+            return 0.0
+        return float(val)
+
+    def _safe_str(val):
+        """Convert string, treating '-' and (empty) as empty string."""
+        if val == "-" or val == "(empty)":
+            return ""
+        return val
+
+    def _parse_with_header(fields):
+        """Parse a line using dynamic field positions from #fields header."""
+        event = {}
+
+        ts_idx = field_positions.get("timestamp")
+        if ts_idx is not None and ts_idx < len(fields):
+            event["timestamp"] = _safe_float(fields[ts_idx])
+        else:
+            return None
+
+        conn_idx = field_positions.get("conn_id")
+        if conn_idx is not None and conn_idx < len(fields):
+            event["conn_id"] = _safe_str(fields[conn_idx])
+        else:
+            event["conn_id"] = ""
+
+        for str_field in ("src_ip", "dest_ip", "protocol", "service", "conn_state", "duration"):
+            idx = field_positions.get(str_field)
+            if idx is not None and idx < len(fields):
+                event[str_field] = _safe_str(fields[idx])
+            else:
+                event[str_field] = ""
+
+        for int_field in ("src_port", "dest_port", "bytes_sent", "bytes_received"):
+            idx = field_positions.get(int_field)
+            if idx is not None and idx < len(fields):
+                event[int_field] = _safe_int(fields[idx])
+            else:
+                event[int_field] = 0
+
+        return event
+
+    def _parse_synthetic_14(fields):
+        """Parse a line in our synthetic 14-field format."""
+        return {
+            "timestamp": _safe_float(fields[0]),
+            "conn_id": _safe_str(fields[1]),
+            "src_ip": _safe_str(fields[2]),
+            "src_port": _safe_int(fields[3]),
+            "dest_ip": _safe_str(fields[4]),
+            "dest_port": _safe_int(fields[5]),
+            "protocol": _safe_str(fields[6]),
+            "service": _safe_str(fields[7]),
+            "conn_state": _safe_str(fields[8]),
+            "duration": _safe_str(fields[9]),
+            "bytes_sent": _safe_int(fields[10]),
+            "bytes_received": _safe_int(fields[11]),
+        }
+
+    def _parse_zeek_22(fields):
+        """Parse a line in headerless real Zeek 22-field format."""
+        return {
+            "timestamp": _safe_float(fields[0]),
+            "conn_id": _safe_str(fields[1]),
+            "src_ip": _safe_str(fields[2]),
+            "src_port": _safe_int(fields[3]),
+            "dest_ip": _safe_str(fields[4]),
+            "dest_port": _safe_int(fields[5]),
+            "protocol": _safe_str(fields[6]),
+            "service": _safe_str(fields[7]),
+            "conn_state": _safe_str(fields[11]),
+            "duration": _safe_str(fields[8]),
+            "bytes_sent": _safe_int(fields[9]),
+            "bytes_received": _safe_int(fields[10]),
+        }
+
     with open(filepath, "r") as f:
         for line in f:
             line = line.strip()
-            if not line or line.startswith("#"):
+            if not line:
                 continue
+
+            # Handle comment/header lines
+            if line.startswith("#"):
+                if line.startswith("#fields"):
+                    # Parse field names from #fields header
+                    parts = line.split("\t")
+                    columns = parts[1:] if len(parts) > 1 else line.split()[1:]
+                    field_positions = {}
+                    for idx, col in enumerate(columns):
+                        if col in zeek_field_map:
+                            field_positions[zeek_field_map[col]] = idx
+                    detected_format = "zeek_header"
+                continue
+
             fields = line.split("\t")
-            if len(fields) != 14:
-                continue
+
+            # Detect format from first data line if not already determined
+            if detected_format is None:
+                num_fields = len(fields)
+                if num_fields == 14:
+                    detected_format = "synthetic_14"
+                elif num_fields >= 21:
+                    detected_format = "zeek_22"
+                else:
+                    continue  # Unknown format, skip line
+
             try:
-                event = {
-                    "timestamp": float(fields[0]),
-                    "conn_id": fields[1],
-                    "src_ip": fields[2],
-                    "src_port": int(fields[3]),
-                    "dest_ip": fields[4],
-                    "dest_port": int(fields[5]),
-                    "protocol": fields[6],
-                    "service": fields[7],
-                    "conn_state": fields[8],
-                    "duration": fields[9],
-                    "bytes_sent": int(fields[10]),
-                    "bytes_received": int(fields[11]),
-                }
-                events.append(event)
+                if detected_format == "zeek_header" and field_positions:
+                    event = _parse_with_header(fields)
+                elif detected_format == "synthetic_14":
+                    if len(fields) != 14:
+                        continue
+                    event = _parse_synthetic_14(fields)
+                elif detected_format == "zeek_22":
+                    if len(fields) < 21:
+                        continue
+                    event = _parse_zeek_22(fields)
+                else:
+                    continue
+
+                if event:
+                    events.append(event)
             except (ValueError, IndexError):
                 continue
+
     return events
 
 
