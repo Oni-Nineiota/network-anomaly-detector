@@ -19,7 +19,7 @@ A real-time network log analysis tool that detects brute force attacks, port sca
 ### Option 1: Python (Direct)
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/network-anomaly-detector.git
+git clone https://github.com/Oni-Nineiota/network-anomaly-detector.git
 cd network-anomaly-detector
 pip install -r requirements.txt
 python log_generator.py
@@ -31,7 +31,7 @@ Open `http://localhost:5000` in your browser.
 ### Option 2: Docker
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/network-anomaly-detector.git
+git clone https://github.com/Oni-Nineiota/network-anomaly-detector.git
 cd network-anomaly-detector
 docker build -t anomaly-detector .
 docker run -p 5000:5000 anomaly-detector
