@@ -27,6 +27,11 @@ pip install -r requirements.txt
 python log_generator.py
 python app.py
 ```
+# Windows
+venv\Scripts\activate
+
+# Linux/Mac
+source venv/bin/activate
 
 Open `http://localhost:5000` in your browser.
 
