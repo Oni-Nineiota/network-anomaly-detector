@@ -21,6 +21,8 @@ A real-time network log analysis tool that detects brute force attacks, port sca
 ```bash
 git clone https://github.com/Oni-Nineiota/network-anomaly-detector.git
 cd network-anomaly-detector
+python -m venv venv
+venv\Scripts\activate
 pip install -r requirements.txt
 python log_generator.py
 python app.py
